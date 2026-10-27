@@ -11,7 +11,6 @@ from typing import Optional, Tuple
 from PySide6.QtGui import QImage, QPainter
 from PySide6.QtCore import Qt
 
-# Define C struct
 class CStitchResult(ctypes.Structure):
     _fields_ = [
         ("offset_y", ctypes.c_int),
@@ -28,13 +27,15 @@ class ScrollingStitcher:
         margin_x_right: int = 24, # exclude scrollbar
         margin_y_top: int = 0,
         margin_y_bottom: int = 0,
-        max_allowed_diff: float = 28.0
+        max_allowed_diff: float = 30.0,
+        is_manual: bool = False
     ):
         self.margin_x_left = margin_x_left
         self.margin_x_right = margin_x_right
         self.margin_y_top = margin_y_top
         self.margin_y_bottom = margin_y_bottom
         self.max_allowed_diff = max_allowed_diff
+        self.is_manual = is_manual
 
         self._lib = None
         self._load_native_library()
@@ -43,7 +44,8 @@ class ScrollingStitcher:
         self._prev_frame: Optional[QImage] = None
         self._frame_count: int = 0
         self._identical_count: int = 0
-        self._max_identical_before_stop: int = 3
+        # Require at least 25 consecutive identical frames before considering end-of-scroll
+        self._max_identical_before_stop: int = 25
 
     def _load_native_library(self):
         so_path = Path(__file__).parent / "libomnishot_stitch.so"
@@ -69,7 +71,6 @@ class ScrollingStitcher:
     def start(self, initial_frame: QImage):
         """Initializes stitching session with the first captured frame."""
         self.reset()
-        # Ensure frame is in Format_RGBX8888 or Format_ARGB32
         if initial_frame.format() not in (QImage.Format.Format_RGBX8888, QImage.Format.Format_RGBA8888, QImage.Format.Format_ARGB32):
             self._stitched = initial_frame.convertToFormat(QImage.Format.Format_RGBX8888)
         else:
@@ -98,7 +99,7 @@ class ScrollingStitcher:
         Processes a newly captured frame, detects vertical shift, and stitches.
         Returns: (success, offset_y, status_message)
           - success=True, offset_y > 0: frame stitched successfully
-          - success=True, offset_y == 0: page stationary / reached bottom
+          - success=True, offset_y == 0: page stationary
           - success=False: failed to find reliable match
         """
         if self._stitched is None or self._prev_frame is None:
@@ -115,14 +116,13 @@ class ScrollingStitcher:
         w = frame.width()
         h = frame.height()
 
-        # Buffer pointers
         b_prev = self._prev_frame.bits()
         b_curr = frame.bits()
         ptr_prev = ctypes.addressof(ctypes.c_char.from_buffer(b_prev))
         ptr_curr = ctypes.addressof(ctypes.c_char.from_buffer(b_curr))
 
-        min_d = 4
-        max_d = int(h * 0.85)
+        min_d = 2
+        max_d = int(h * 0.90)
 
         result = CStitchResult()
         d = self._lib.omnishot_find_vertical_offset(
@@ -135,7 +135,9 @@ class ScrollingStitcher:
 
         if result.is_identical or d == 0:
             self._identical_count += 1
-            if self._identical_count >= self._max_identical_before_stop:
+            # In manual mode, NEVER auto-abort on identical frames. The user is in control.
+            # In auto mode, only auto-abort if we have already successfully stitched several frames (frame_count >= 3).
+            if not self.is_manual and self._frame_count >= 3 and self._identical_count >= self._max_identical_before_stop:
                 return True, 0, "End of scroll detected (content reached bottom)"
             return True, 0, "No scroll movement detected"
 
@@ -148,7 +150,6 @@ class ScrollingStitcher:
             
             new_canvas = QImage(w, new_h, QImage.Format.Format_RGBX8888)
             painter = QPainter(new_canvas)
-            # Draw existing composite
             painter.drawImage(0, 0, self._stitched)
             # Slice the bottom d rows from new_frame: from row (h - d) to h
             new_slice = frame.copy(0, h - d, w, d)

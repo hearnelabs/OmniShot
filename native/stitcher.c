@@ -8,10 +8,6 @@
 #include <string.h>
 #include <math.h>
 
-#ifdef __x86_64__
-#include <immintrin.h>
-#endif
-
 typedef struct {
     int offset_y;          // Best vertical offset (pixels)
     int offset_x;          // Horizontal drift (usually 0)
@@ -28,6 +24,21 @@ static inline int pixel_diff(uint32_t c1, uint32_t c2) {
     return abs(r) + abs(g) + abs(b);
 }
 
+// Compute variance / edge count of a horizontal strip to ensure it has features
+static double compute_strip_variance(const uint32_t* frame, int width, int y_start, int strip_h, int margin_x_left, int margin_x_right) {
+    int64_t diff_sum = 0;
+    int count = 0;
+    for (int y = y_start; y < y_start + strip_h - 1; y += 2) {
+        const uint32_t* r1 = &frame[y * width];
+        const uint32_t* r2 = &frame[(y + 1) * width];
+        for (int x = margin_x_left; x < width - margin_x_right; x += 4) {
+            diff_sum += pixel_diff(r1[x], r2[x]);
+            count++;
+        }
+    }
+    return count > 0 ? (double)diff_sum / count : 0.0;
+}
+
 /*
  * Checks if two frames are effectively identical in their scrollable body
  */
@@ -39,8 +50,8 @@ int check_identical(
     int margin_x,
     int margin_y
 ) {
-    int y_start = margin_y + 10;
-    int y_end = height - margin_y - 10;
+    int y_start = margin_y + 15;
+    int y_end = height - margin_y - 15;
     if (y_start >= y_end) {
         y_start = height / 4;
         y_end = 3 * height / 4;
@@ -49,13 +60,13 @@ int check_identical(
     int64_t diff_sum = 0;
     int samples = 0;
 
-    int y_step = (y_end - y_start) / 16;
+    int y_step = (y_end - y_start) / 20;
     if (y_step < 1) y_step = 1;
 
     for (int y = y_start; y < y_end; y += y_step) {
         const uint32_t* row_a = &frame_a[y * width];
         const uint32_t* row_b = &frame_b[y * width];
-        for (int x = margin_x; x < width - margin_x; x += 4) {
+        for (int x = margin_x; x < width - margin_x; x += 6) {
             diff_sum += pixel_diff(row_a[x], row_b[x]);
             samples++;
         }
@@ -63,7 +74,7 @@ int check_identical(
 
     if (samples == 0) return 1;
     double avg = (double)diff_sum / samples;
-    return (avg < 1.0) ? 1 : 0;
+    return (avg < 1.2) ? 1 : 0;
 }
 
 /*
@@ -103,7 +114,7 @@ int omnishot_find_vertical_offset(
         eff_width = width - 10;
     }
 
-    // Check if frames are identical
+    // Check if frames are identical (0 displacement)
     if (check_identical(prev_frame, curr_frame, width, height, margin_x_left, margin_y_top)) {
         if (out_result) {
             out_result->offset_y = 0;
@@ -115,18 +126,32 @@ int omnishot_find_vertical_offset(
         return 0;
     }
 
-    // Define search strip from curr_frame
-    // We sample a strip starting right below the top margin
-    int strip_h = 48;
-    if (strip_h > (height / 5)) strip_h = (height / 5);
-    if (strip_h < 12) strip_h = 12;
+    // We select feature-rich sample strips from curr_frame to correlate against prev_frame
+    int strip_h = 28;
+    if (strip_h > (height / 6)) strip_h = (height / 6);
+    if (strip_h < 10) strip_h = 10;
 
-    int curr_y_start = margin_y_top + 10;
+    // Test 3 candidate strip positions: near top, upper-middle, and center
+    int candidate_ys[3];
+    candidate_ys[0] = margin_y_top + 10;
+    candidate_ys[1] = (int)(height * 0.25);
+    candidate_ys[2] = (int)(height * 0.45);
 
-    // Also a second verification strip further down in curr_frame
-    int strip2_h = 32;
-    int curr_y2_start = curr_y_start + strip_h + 20;
-    int use_strip2 = (curr_y2_start + strip2_h < height - margin_y_bottom - 60);
+    int best_sample_y = candidate_ys[1];
+    double max_var = -1.0;
+
+    for (int i = 0; i < 3; i++) {
+        int cy = candidate_ys[i];
+        if (cy + strip_h < height - margin_y_bottom - 20) {
+            double v = compute_strip_variance(curr_frame, width, cy, strip_h, margin_x_left, margin_x_right);
+            if (v > max_var) {
+                max_var = v;
+                best_sample_y = cy;
+            }
+        }
+    }
+
+    int curr_y_start = best_sample_y;
 
     double best_diff = 1e9;
     int best_d = -1;
@@ -140,48 +165,46 @@ int omnishot_find_vertical_offset(
         int64_t total_diff = 0;
         int count = 0;
 
-        // Primary strip match
-        for (int sy = 0; sy < strip_h; sy += 2) {
+        // Sample strip match - compare every scanline to prevent aliasing
+        for (int sy = 0; sy < strip_h; sy++) {
             const uint32_t* r_curr = &curr_frame[(curr_y_start + sy) * width];
             const uint32_t* r_prev = &prev_frame[(prev_y_start + sy) * width];
 
-            for (int x = margin_x_left; x < width - margin_x_right; x += 4) {
+            for (int x = margin_x_left; x < width - margin_x_right; x += 2) {
                 total_diff += pixel_diff(r_curr[x], r_prev[x]);
                 count++;
             }
         }
 
         if (count == 0) continue;
-        double avg1 = (double)total_diff / count;
+        double avg = (double)total_diff / count;
 
-        // If primary strip is promising, check secondary strip for strong multi-point confirmation
-        double avg_combined = avg1;
-        if (use_strip2 && avg1 < (best_diff * 1.5 + 5.0)) {
+        int strip2_h = 24;
+        int curr_y2_start = curr_y_start + strip_h + 30;
+        double avg_combined = avg;
+        if (curr_y2_start + strip2_h + d < height - margin_y_bottom) {
             int prev_y2_start = curr_y2_start + d;
-            if (prev_y2_start + strip2_h < height - margin_y_bottom) {
-                int64_t total_diff2 = 0;
-                int count2 = 0;
-                for (int sy = 0; sy < strip2_h; sy += 2) {
-                    const uint32_t* r2_curr = &curr_frame[(curr_y2_start + sy) * width];
-                    const uint32_t* r2_prev = &prev_frame[(prev_y2_start + sy) * width];
-                    for (int x = margin_x_left; x < width - margin_x_right; x += 4) {
-                        total_diff2 += pixel_diff(r2_curr[x], r2_prev[x]);
-                        count2++;
-                    }
+            int64_t total_diff2 = 0;
+            int count2 = 0;
+            for (int sy = 0; sy < strip2_h; sy++) {
+                const uint32_t* r2_curr = &curr_frame[(curr_y2_start + sy) * width];
+                const uint32_t* r2_prev = &prev_frame[(prev_y2_start + sy) * width];
+                for (int x = margin_x_left; x < width - margin_x_right; x += 2) {
+                    total_diff2 += pixel_diff(r2_curr[x], r2_prev[x]);
+                    count2++;
                 }
-                if (count2 > 0) {
-                    double avg2 = (double)total_diff2 / count2;
-                    avg_combined = (avg1 * 0.6) + (avg2 * 0.4);
-                }
+            }
+            if (count2 > 0) {
+                double avg2 = (double)total_diff2 / count2;
+                avg_combined = (avg * 0.5) + (avg2 * 0.5);
             }
         }
 
         if (avg_combined < best_diff) {
             best_diff = avg_combined;
             best_d = d;
-            // Short-circuit if near-perfect match found
             if (best_diff < 0.2) {
-                break;
+                break; // Near-perfect match
             }
         }
     }
@@ -191,7 +214,6 @@ int omnishot_find_vertical_offset(
             out_result->offset_y = best_d;
             out_result->offset_x = 0;
             out_result->mean_diff = best_diff;
-            // Confidence calculation: max 1.0 down to 0.0 at max_allowed_diff
             double conf = 1.0 - (best_diff / max_allowed_diff);
             out_result->confidence = conf > 0.0 ? conf : 0.0;
             out_result->is_identical = 0;

@@ -1,6 +1,7 @@
 """
 OmniShot Floating Scroll Capture HUD
-Real-time floating control bar and mini visual preview during scrolling capture.
+Non-intrusive floating control bar and mini visual preview during scrolling capture.
+Never steals focus from target applications.
 """
 
 from typing import Optional
@@ -8,15 +9,15 @@ from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame
 )
 from PySide6.QtGui import QImage, QPixmap, QPainter, QColor, QFont, QKeyEvent
-from PySide6.QtCore import Qt, Signal, QRect
+from PySide6.QtCore import Qt, Signal
 
 class ScrollThumbnailPreview(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(60, 120)
+        self.setFixedSize(64, 120)
         self.setStyleSheet("""
             QLabel {
-                background-color: #1a1c1e;
+                background-color: #14171a;
                 border: 1px solid #3daee9;
                 border-radius: 4px;
             }
@@ -25,12 +26,13 @@ class ScrollThumbnailPreview(QLabel):
 
     def update_thumbnail(self, image: QImage):
         if image and not image.isNull():
-            pix = QPixmap.fromImage(image.scaled(56, 116, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            pix = QPixmap.fromImage(image.scaled(60, 116, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
             self.setPixmap(pix)
 
 
 class ScrollingCaptureHUD(QFrame):
     finishRequested = Signal()
+    stepScrollRequested = Signal()
     pauseToggled = Signal(bool)
     cancelRequested = Signal()
 
@@ -39,18 +41,21 @@ class ScrollingCaptureHUD(QFrame):
         self.is_auto = is_auto
         self.is_paused = False
 
+        # CRITICAL: Never steal focus from the target application under Wayland
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.WindowStaysOnTopHint |
-            Qt.WindowType.Tool
+            Qt.WindowType.Tool |
+            Qt.WindowType.WindowDoesNotAcceptFocus
         )
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.setStyleSheet("""
             QFrame#hudContainer {
-                background-color: rgba(26, 29, 34, 240);
-                border: 1.5px solid #3daee9;
+                background-color: rgba(23, 26, 32, 245);
+                border: 2px solid #3daee9;
                 border-radius: 12px;
                 padding: 10px;
             }
@@ -63,10 +68,10 @@ class ScrollingCaptureHUD(QFrame):
                 color: #eff0f1;
                 border: 1px solid #474e54;
                 border-radius: 6px;
-                padding: 8px 14px;
+                padding: 7px 14px;
                 font-weight: 600;
                 font-size: 13px;
-                min-width: 80px;
+                min-width: 85px;
             }
             QPushButton:hover {
                 background-color: #3b4249;
@@ -76,9 +81,18 @@ class ScrollingCaptureHUD(QFrame):
                 background-color: #27ae60;
                 border: 1px solid #2ecc71;
                 color: #ffffff;
+                font-weight: bold;
             }
             QPushButton#finishBtn:hover {
                 background-color: #2ecc71;
+            }
+            QPushButton#stepBtn {
+                background-color: #1d6fa5;
+                border: 1px solid #3daee9;
+                color: #ffffff;
+            }
+            QPushButton#stepBtn:hover {
+                background-color: #2282c0;
             }
             QPushButton#cancelBtn {
                 background-color: #7f8c8d;
@@ -94,7 +108,7 @@ class ScrollingCaptureHUD(QFrame):
         main_layout.setContentsMargins(14, 10, 14, 10)
         main_layout.setSpacing(14)
 
-        # Thumbnail on the left
+        # Thumbnail preview on the left
         self.thumbnail = ScrollThumbnailPreview(self)
         main_layout.addWidget(self.thumbnail)
 
@@ -102,14 +116,14 @@ class ScrollingCaptureHUD(QFrame):
         info_layout = QVBoxLayout()
         info_layout.setSpacing(4)
 
-        mode_str = "Auto-Scrolling" if is_auto else "Manual Scrolling"
-        self.lbl_title = QLabel(f"🔴 Live Capture ({mode_str})", self)
+        mode_str = "Auto-Scroll" if is_auto else "Manual Scroll"
+        self.lbl_title = QLabel(f"🔴 Live Scrolling ({mode_str})", self)
         self.lbl_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #3daee9;")
         
         self.lbl_stats = QLabel("Height: 0 px  ·  Frames: 1", self)
         self.lbl_stats.setStyleSheet("font-size: 13px; font-weight: 600; color: #ffffff;")
 
-        hint_text = "Scroll target page with mouse or trackpad" if not is_auto else "Auto-scrolling content downwards..."
+        hint_text = "Scroll content with mouse wheel / trackpad" if not is_auto else "Auto-scrolling content downwards..."
         self.lbl_hint = QLabel(hint_text, self)
         self.lbl_hint.setStyleSheet("font-size: 11px; color: #bdc3c7;")
 
@@ -124,15 +138,26 @@ class ScrollingCaptureHUD(QFrame):
 
         self.btn_finish = QPushButton("⏹ Done (Enter)", self)
         self.btn_finish.setObjectName("finishBtn")
+        self.btn_finish.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_finish.clicked.connect(self.finishRequested.emit)
 
+        # Step scroll button: allows immediate manual step anytime
+        self.btn_step = QPushButton("⬇ Scroll Step", self)
+        self.btn_step.setObjectName("stepBtn")
+        self.btn_step.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_step.setToolTip("Click to manually advance one scroll step")
+        self.btn_step.clicked.connect(self.stepScrollRequested.emit)
+        btn_layout.addWidget(self.btn_step)
+
         if is_auto:
-            self.btn_pause = QPushButton("⏸ Pause (Space)", self)
+            self.btn_pause = QPushButton("⏸ Pause", self)
+            self.btn_pause.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             self.btn_pause.clicked.connect(self._toggle_pause)
             btn_layout.addWidget(self.btn_pause)
 
         self.btn_cancel = QPushButton("✕ Cancel (Esc)", self)
         self.btn_cancel.setObjectName("cancelBtn")
+        self.btn_cancel.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_cancel.clicked.connect(self.cancelRequested.emit)
 
         btn_layout.addWidget(self.btn_finish)
@@ -142,22 +167,11 @@ class ScrollingCaptureHUD(QFrame):
     def _toggle_pause(self):
         self.is_paused = not self.is_paused
         if hasattr(self, "btn_pause"):
-            self.btn_pause.setText("▶ Resume (Space)" if self.is_paused else "⏸ Pause (Space)")
-        self.lbl_title.setText(f"⏸ Paused ({'Auto' if self.is_auto else 'Manual'})" if self.is_paused else f"🔴 Live Capture ({'Auto' if self.is_auto else 'Manual'})")
+            self.btn_pause.setText("▶ Resume" if self.is_paused else "⏸ Pause")
+        self.lbl_title.setText(f"⏸ Paused ({'Auto' if self.is_auto else 'Manual'})" if self.is_paused else f"🔴 Live Scrolling ({'Auto' if self.is_auto else 'Manual'})")
         self.pauseToggled.emit(self.is_paused)
 
     def update_status(self, height: int, frames: int, preview_img: Optional[QImage] = None):
         self.lbl_stats.setText(f"Height: {height:,} px  ·  Frames: {frames}")
         if preview_img and not preview_img.isNull():
             self.thumbnail.update_thumbnail(preview_img)
-
-    def keyPressEvent(self, event: QKeyEvent):
-        key = event.key()
-        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            self.finishRequested.emit()
-        elif key == Qt.Key.Key_Space and self.is_auto:
-            self._toggle_pause()
-        elif key == Qt.Key.Key_Escape:
-            self.cancelRequested.emit()
-        else:
-            super().keyPressEvent(event)
