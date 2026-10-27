@@ -1,0 +1,39 @@
+[Desktop Entry]
+Name=OmniShot
+GenericName=Screenshot & Scrolling Capture Utility
+Comment=Take screenshots with seamless vertical scrolling capture, annotations, and OCR
+Exec=omnishot %u
+Icon=omnishot
+Type=Application
+StartupNotify=false
+Categories=Utility;Graphics;Photography;
+Keywords=snapshot;capture;print;screenshot;snipping;scroll;scrolling;stitch;
+Actions=ScrollingCapture;ManualScrollingCapture;RectangularRegionScreenShot;ActiveWindowScreenShot;FullScreenScreenShot;
+X-KDE-Shortcuts=Meta+Shift+S
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
+X-KDE-Wayland-Interfaces=org_kde_plasma_window_management,zkde_screencast_unstable_v1
+
+[Desktop Action ScrollingCapture]
+Name=Scrolling Capture (Auto)
+Exec=omnishot -S
+Icon=omnishot
+
+[Desktop Action ManualScrollingCapture]
+Name=Scrolling Capture (Manual)
+Exec=omnishot -M
+Icon=omnishot
+
+[Desktop Action RectangularRegionScreenShot]
+Name=Capture Rectangular Region
+Exec=omnishot -r
+Icon=spectacle
+
+[Desktop Action ActiveWindowScreenShot]
+Name=Capture Active Window
+Exec=omnishot -a
+Icon=spectacle
+
+[Desktop Action FullScreenScreenShot]
+Name=Capture Entire Desktop
+Exec=omnishot -f
+Icon=spectacle
