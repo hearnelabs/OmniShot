@@ -17,7 +17,8 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from PySide6.QtGui import QGuiApplication, QImage, QPainter, QColor
+from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QImage, QPainter, QColor
 from omnishot.core.config import OmniShotConfig
 from omnishot.core.stitcher import ScrollingStitcher
 from omnishot.core.uinput_mouse import UInputScroller
@@ -28,8 +29,8 @@ from omnishot.cli import build_parser
 class TestOmniShot(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # Initialize offscreen Qt application for image tests
-        cls.app = QGuiApplication.instance() or QGuiApplication(["test", "-platform", "offscreen"])
+        # Initialize offscreen Qt application for image and widget tests
+        cls.app = QApplication.instance() or QApplication(["test", "-platform", "offscreen"])
 
     def test_01_config_defaults(self):
         cfg = OmniShotConfig()
@@ -98,5 +99,46 @@ class TestOmniShot(unittest.TestCase):
         self.assertTrue(args.scroll)
         self.assertEqual(args.delay, 500)
 
+    def test_07_sharex_vector_annotations(self):
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtCore import QRectF, QPointF
+        from omnishot.ui.canvas import (
+            AnnotationCanvas, RectAnnotation, ArrowAnnotation,
+            TextAnnotation, SpeechBalloonAnnotation, StepBadgeAnnotation
+        )
+        app = QApplication.instance() or QApplication(["test", "-platform", "offscreen"])
+        canvas = AnnotationCanvas()
+        img = QImage(300, 200, QImage.Format.Format_RGBX8888)
+        img.fill(QColor(40, 40, 40))
+        canvas.set_image(img)
+
+        # Add ShareX vector items
+        r = RectAnnotation(is_rounded=True)
+        r.rect = QRectF(10, 10, 50, 40)
+        canvas.annotations.append(r)
+
+        a = ArrowAnnotation()
+        a.p1 = QPointF(80, 20)
+        a.p2 = QPointF(150, 60)
+        canvas.annotations.append(a)
+
+        t = TextAnnotation("ShareX Text")
+        t.rect = QRectF(20, 80, 100, 30)
+        canvas.annotations.append(t)
+
+        s = StepBadgeAnnotation(1)
+        s.rect = QRectF(180, 80, 30, 30)
+        canvas.annotations.append(s)
+
+        sb = SpeechBalloonAnnotation("Bubble")
+        sb.rect = QRectF(20, 130, 80, 40)
+        canvas.annotations.append(sb)
+
+        comp = canvas.render_composite_image()
+        self.assertIsNotNone(comp)
+        self.assertEqual(comp.width(), 300)
+        self.assertEqual(comp.height(), 200)
+
 if __name__ == "__main__":
     unittest.main()
+

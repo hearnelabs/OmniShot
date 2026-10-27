@@ -1,243 +1,183 @@
 """
-OmniShot KDE Plasma 6 Breeze Theme & Styling
-Matches KDE Plasma 6 aesthetic with dark/light theme support.
+OmniShot Theme - ShareX Professional Dark Theme
+Matches the ShareX Image Editor aesthetic:
+Dark neutral canvas, vibrant blue tool selections (#0078d4),
+contextual options sub-toolbar, and bottom action capsule.
 """
 
-BREEZE_DARK_QSS = """
+SHAREX_DARK_QSS = """
 QMainWindow, QDialog {
-    background-color: #232629;
-    color: #eff0f1;
-    font-family: "Noto Sans", "Cantarell", sans-serif;
+    background-color: #1e1e1e;
+    color: #cccccc;
+    font-family: "Segoe UI", "Noto Sans", sans-serif;
     font-size: 13px;
 }
 
 QWidget {
-    background-color: #232629;
-    color: #eff0f1;
-    font-family: "Noto Sans", "Cantarell", sans-serif;
+    background-color: #1e1e1e;
+    color: #cccccc;
+    font-family: "Segoe UI", "Noto Sans", sans-serif;
     font-size: 13px;
 }
 
-QToolBar {
-    background-color: #2a2e32;
-    border-bottom: 1px solid #31363b;
-    padding: 6px;
-    spacing: 6px;
+/* Primary Top Toolbar */
+QToolBar#primaryToolBar {
+    background-color: #252526;
+    border-bottom: 1px solid #333337;
+    padding: 4px 8px;
+    spacing: 3px;
+}
+
+/* Secondary Contextual Options Bar */
+QToolBar#contextualToolBar {
+    background-color: #2d2d30;
+    border-bottom: 1px solid #3e3e42;
+    padding: 3px 12px;
+    spacing: 8px;
 }
 
 QToolButton {
     background-color: transparent;
-    color: #eff0f1;
+    color: #cccccc;
     border: 1px solid transparent;
-    border-radius: 5px;
-    padding: 6px 10px;
-    font-weight: 500;
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-size: 13px;
 }
 
 QToolButton:hover {
-    background-color: #31363b;
-    border: 1px solid #3daee9;
+    background-color: #3e3e42;
+    border: 1px solid #4e4e52;
 }
 
 QToolButton:checked {
-    background-color: #1d3b53;
-    border: 1px solid #3daee9;
+    background-color: #0078d4;
     color: #ffffff;
+    border: 1px solid #1084d8;
 }
 
 QToolButton:pressed {
-    background-color: #264a66;
+    background-color: #005a9e;
 }
 
-QPushButton {
-    background-color: #31363b;
-    color: #eff0f1;
-    border: 1px solid #474e54;
-    border-radius: 5px;
-    padding: 7px 16px;
-    font-weight: 500;
-    min-width: 70px;
-}
-
-QPushButton:hover {
-    background-color: #3b4249;
-    border: 1px solid #3daee9;
-}
-
-QPushButton:pressed {
-    background-color: #264a66;
-    border: 1px solid #3daee9;
-}
-
-QPushButton#primaryBtn {
-    background-color: #1d6fa5;
-    border: 1px solid #3daee9;
+/* Special High-Visibility Scrolling Capture Button */
+QToolButton#scrollingCaptureBtn {
+    background-color: #107c41;
     color: #ffffff;
-    font-weight: 600;
+    font-weight: bold;
+    border: 1px solid #168c4a;
+    border-radius: 4px;
+    padding: 5px 12px;
 }
 
-QPushButton#primaryBtn:hover {
-    background-color: #2282c0;
+QToolButton#scrollingCaptureBtn:hover {
+    background-color: #168c4a;
 }
 
-QPushButton#primaryBtn:pressed {
-    background-color: #165682;
-}
-
-QPushButton#accentBtn {
-    background-color: #27ae60;
-    border: 1px solid #2ecc71;
+/* SpinBox & ComboBox in Context Bar */
+QSpinBox, QComboBox {
+    background-color: #333337;
     color: #ffffff;
-    font-weight: 600;
+    border: 1px solid #434346;
+    border-radius: 3px;
+    padding: 3px 6px;
+    font-size: 12px;
 }
 
-QPushButton#accentBtn:hover {
-    background-color: #2ecc71;
+QSpinBox:hover, QComboBox:hover {
+    border: 1px solid #0078d4;
 }
 
-QPushButton#dangerBtn {
-    background-color: #962d22;
-    border: 1px solid #e74c3c;
+/* Bottom Floating Pill Container */
+QFrame#bottomActionPill {
+    background-color: rgba(37, 37, 38, 0.95);
+    border: 1.5px solid #434346;
+    border-radius: 24px;
+    padding: 4px 10px;
+}
+
+/* Big Green Finish Play/Check Button */
+QPushButton#finishGreenBtn {
+    background-color: #107c41;
     color: #ffffff;
+    border: none;
+    border-radius: 17px;
+    min-width: 34px;
+    max-width: 34px;
+    min-height: 34px;
+    max-height: 34px;
+    font-size: 16px;
+    font-weight: bold;
 }
 
-QPushButton#dangerBtn:hover {
-    background-color: #c0392b;
+QPushButton#finishGreenBtn:hover {
+    background-color: #16c60c;
+}
+
+QPushButton#finishGreenBtn:pressed {
+    background-color: #0e6b37;
+}
+
+/* Red Cancel Button */
+QPushButton#cancelRedBtn {
+    background-color: #c42b1c;
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    min-width: 30px;
+    max-width: 30px;
+    min-height: 30px;
+    max-height: 30px;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+QPushButton#cancelRedBtn:hover {
+    background-color: #e81123;
+}
+
+/* Standard Pill Action Buttons */
+QToolButton#pillActionBtn {
+    background-color: transparent;
+    color: #d4d4d4;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 14px;
+}
+
+QToolButton#pillActionBtn:hover {
+    background-color: #3e3e42;
+    border: 1px solid #4e4e52;
 }
 
 QScrollArea {
-    background-color: #1b1e20;
-    border: 1px solid #31363b;
-    border-radius: 6px;
+    background-color: #1e1e1e;
+    border: none;
 }
 
-QScrollBar:vertical {
-    background-color: #232629;
+QScrollBar:vertical, QScrollBar:horizontal {
+    background-color: #1e1e1e;
     width: 12px;
-    margin: 0px;
-}
-
-QScrollBar::handle:vertical {
-    background-color: #474e54;
-    min-height: 24px;
-    border-radius: 6px;
-    margin: 2px;
-}
-
-QScrollBar::handle:vertical:hover {
-    background-color: #3daee9;
-}
-
-QScrollBar:horizontal {
-    background-color: #232629;
     height: 12px;
     margin: 0px;
 }
 
-QScrollBar::handle:horizontal {
-    background-color: #474e54;
-    min-width: 24px;
+QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
+    background-color: #424242;
+    min-height: 20px;
+    min-width: 20px;
     border-radius: 6px;
     margin: 2px;
 }
 
-QScrollBar::handle:horizontal:hover {
-    background-color: #3daee9;
-}
-
-QSlider::groove:horizontal {
-    border: 1px solid #31363b;
-    height: 6px;
-    background: #1b1e20;
-    border-radius: 3px;
-}
-
-QSlider::sub-page:horizontal {
-    background: #3daee9;
-    border-radius: 3px;
-}
-
-QSlider::handle:horizontal {
-    background: #eff0f1;
-    border: 1px solid #3daee9;
-    width: 16px;
-    margin-top: -5px;
-    margin-bottom: -5px;
-    border-radius: 8px;
-}
-
-QSlider::handle:horizontal:hover {
-    background: #3daee9;
+QScrollBar::handle:hover {
+    background-color: #0078d4;
 }
 
 QStatusBar {
-    background-color: #1d2023;
-    color: #bdc3c7;
-    border-top: 1px solid #31363b;
-    font-size: 12px;
-}
-
-QLabel {
-    color: #eff0f1;
-}
-
-QComboBox {
-    background-color: #31363b;
-    color: #eff0f1;
-    border: 1px solid #474e54;
-    border-radius: 5px;
-    padding: 5px 10px;
-    min-width: 90px;
-}
-
-QComboBox:hover {
-    border: 1px solid #3daee9;
-}
-
-QComboBox::drop-down {
-    subcontrol-origin: padding;
-    subcontrol-position: top right;
-    width: 20px;
-    border-left: none;
-}
-
-QComboBox QAbstractItemView {
-    background-color: #2a2e32;
-    border: 1px solid #3daee9;
-    selection-background-color: #1d3b53;
-    selection-color: #ffffff;
-}
-
-QSpinBox {
-    background-color: #31363b;
-    color: #eff0f1;
-    border: 1px solid #474e54;
-    border-radius: 5px;
-    padding: 4px 8px;
-}
-
-QSpinBox:hover {
-    border: 1px solid #3daee9;
-}
-
-QToolTip {
-    background-color: #1b1e20;
+    background-color: #007acc;
     color: #ffffff;
-    border: 1px solid #3daee9;
-    padding: 4px 8px;
-    border-radius: 4px;
     font-size: 12px;
 }
 """
-
-# Palette colors for annotations
-ANNOTATION_PALETTE = [
-    "#e74c3c", # Vibrant Red
-    "#3daee9", # Breeze Blue
-    "#2ecc71", # Emerald Green
-    "#f1c40f", # Bright Yellow
-    "#9b59b6", # Purple
-    "#e67e22", # Orange
-    "#ffffff", # White
-    "#111111", # Dark
-]
