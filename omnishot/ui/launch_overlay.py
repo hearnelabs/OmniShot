@@ -13,13 +13,15 @@ Faithfully implements the Spectacle 6 in-situ launch experience:
 from typing import Optional, List
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame,
-    QToolButton, QMenu, QApplication
+    QToolButton, QMenu, QApplication, QGraphicsDropShadowEffect
 )
 from PySide6.QtGui import (
     QPainter, QPen, QBrush, QColor, QFont, QMouseEvent, QKeyEvent,
-    QPaintEvent, QImage, QAction, QCursor
+    QPaintEvent, QImage, QAction, QCursor, QIcon
 )
 from PySide6.QtCore import Qt, QPoint, QRect, Signal, QSize
+
+from .icons import get_tool_icon
 
 
 class SelectionActionStrip(QFrame):
@@ -34,22 +36,23 @@ class SelectionActionStrip(QFrame):
         self.setObjectName("selectionStrip")
         self.setStyleSheet("""
             QFrame#selectionStrip {
-                background-color: rgba(24, 28, 34, 240);
-                border: 1px solid #3daee9;
-                border-radius: 10px;
-                padding: 3px;
+                background-color: rgba(18, 22, 28, 245);
+                border: 1.5px solid rgba(61, 174, 233, 0.6);
+                border-radius: 18px;
+                padding: 3px 6px;
             }
             QPushButton {
-                background-color: #2d3238;
+                background-color: rgba(255, 255, 255, 0.08);
                 color: #eff0f1;
-                border: 1px solid #474e54;
-                border-radius: 6px;
-                padding: 6px 12px;
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                border-radius: 14px;
+                padding: 0 14px;
                 font-weight: 600;
                 font-size: 12px;
             }
             QPushButton:hover {
-                background-color: #3daee9;
+                background-color: rgba(61, 174, 233, 0.25);
+                border: 1px solid #3daee9;
                 color: #ffffff;
             }
             QPushButton#btnAccept {
@@ -63,7 +66,7 @@ class SelectionActionStrip(QFrame):
             }
             QPushButton#btnAutoScroll {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #27ae60, stop:1 #1e824c);
-                border: 1px solid #2ecc71;
+                border: 1.5px solid #2ecc71;
                 color: #ffffff;
                 font-weight: bold;
             }
@@ -71,8 +74,9 @@ class SelectionActionStrip(QFrame):
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2ecc71, stop:1 #27ae60);
             }
             QPushButton#btnDiscard {
-                background-color: #3a3f44;
-                color: #e74c3c;
+                background-color: rgba(231, 76, 60, 0.15);
+                color: #ff7675;
+                border: 1px solid rgba(231, 76, 60, 0.35);
             }
             QPushButton#btnDiscard:hover {
                 background-color: #c0392b;
@@ -84,19 +88,27 @@ class SelectionActionStrip(QFrame):
         layout.setContentsMargins(6, 4, 6, 4)
         layout.setSpacing(6)
 
-        self.btn_accept = QPushButton("✔ Accept (Enter)", self)
+        self.btn_accept = QPushButton("Accept (Enter)", self)
         self.btn_accept.setObjectName("btnAccept")
+        self.btn_accept.setIcon(QIcon.fromTheme("dialog-ok-apply"))
+        self.btn_accept.setFixedHeight(30)
         self.btn_accept.clicked.connect(self.acceptClicked.emit)
 
-        self.btn_auto_scroll = QPushButton("📜 Auto-Scroll (A)", self)
+        self.btn_auto_scroll = QPushButton("Auto-Scroll (A)", self)
         self.btn_auto_scroll.setObjectName("btnAutoScroll")
+        self.btn_auto_scroll.setIcon(get_tool_icon("scrolling_capture"))
+        self.btn_auto_scroll.setFixedHeight(30)
         self.btn_auto_scroll.clicked.connect(self.autoScrollClicked.emit)
 
-        self.btn_manual_scroll = QPushButton("🖱️ Manual Scroll (M)", self)
+        self.btn_manual_scroll = QPushButton("Manual Scroll (M)", self)
+        self.btn_manual_scroll.setIcon(QIcon.fromTheme("input-mouse"))
+        self.btn_manual_scroll.setFixedHeight(30)
         self.btn_manual_scroll.clicked.connect(self.manualScrollClicked.emit)
 
-        self.btn_discard = QPushButton("✕ Discard", self)
+        self.btn_discard = QPushButton("Discard", self)
         self.btn_discard.setObjectName("btnDiscard")
+        self.btn_discard.setIcon(QIcon.fromTheme("edit-delete"))
+        self.btn_discard.setFixedHeight(30)
         self.btn_discard.clicked.connect(self.discardClicked.emit)
 
         layout.addWidget(self.btn_accept)
@@ -124,43 +136,45 @@ class FloatingLaunchPill(QFrame):
 
         self.setStyleSheet("""
             QFrame#bottomPill {
-                background-color: rgba(22, 26, 32, 235);
-                border: 1px solid rgba(61, 174, 233, 0.45);
-                border-radius: 24px;
-                padding: 4px 10px;
+                background-color: rgba(18, 22, 28, 245);
+                border: 1.5px solid rgba(61, 174, 233, 0.45);
+                border-radius: 23px;
+                padding: 4px 6px;
             }
             QPushButton, QToolButton {
-                background-color: #2a2e33;
+                background-color: rgba(255, 255, 255, 0.08);
                 color: #eff0f1;
-                border: 1px solid #3e444a;
+                border: 1px solid rgba(255, 255, 255, 0.14);
                 border-radius: 17px;
-                padding: 7px 14px;
+                padding: 0 16px;
                 font-weight: 600;
                 font-size: 12px;
             }
             QPushButton:hover, QToolButton:hover {
-                background-color: #353b42;
+                background-color: rgba(61, 174, 233, 0.22);
                 border: 1px solid #3daee9;
                 color: #ffffff;
             }
             QPushButton#btnScroll {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #27ae60, stop:1 #1e824c);
-                border: 1px solid #2ecc71;
+                border: 1.5px solid #2ecc71;
                 border-radius: 17px;
-                padding: 7px 18px;
+                padding: 0 18px;
                 color: #ffffff;
                 font-weight: bold;
                 font-size: 13px;
             }
             QPushButton#btnScroll:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2ecc71, stop:1 #27ae60);
-                border: 1px solid #58d68d;
+                border: 1.5px solid #58d68d;
             }
             QPushButton#btnCancel {
-                background-color: #2d3238;
-                color: #e74c3c;
-                border: 1px solid #4a3333;
+                background-color: rgba(231, 76, 60, 0.12);
+                color: #ff7675;
+                border: 1px solid rgba(231, 76, 60, 0.35);
                 border-radius: 17px;
+                padding: 0 16px;
+                font-weight: 600;
             }
             QPushButton#btnCancel:hover {
                 background-color: #c0392b;
@@ -168,9 +182,10 @@ class FloatingLaunchPill(QFrame):
                 border: 1px solid #e74c3c;
             }
             QFrame#vSep {
-                background-color: #474e54;
+                background-color: rgba(255, 255, 255, 0.15);
                 width: 1px;
                 max-width: 1px;
+                margin: 4px 2px;
             }
             QMenu {
                 background-color: #1e2227;
@@ -190,30 +205,42 @@ class FloatingLaunchPill(QFrame):
         """)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setContentsMargins(8, 5, 8, 5)
         layout.setSpacing(8)
 
         # 1. 📜 Scrolling Capture (Highlighted Green Button)
-        self.btn_scroll = QPushButton("📜 Scrolling Capture", self)
+        self.btn_scroll = QPushButton("Scrolling Capture", self)
         self.btn_scroll.setObjectName("btnScroll")
+        self.btn_scroll.setIcon(get_tool_icon("scrolling_capture"))
+        self.btn_scroll.setIconSize(QSize(20, 20))
+        self.btn_scroll.setFixedHeight(34)
         self.btn_scroll.setToolTip("Start automated vertical scrolling capture on target window/region")
         self.btn_scroll.clicked.connect(self.scrollCaptureTriggered.emit)
         layout.addWidget(self.btn_scroll)
 
         # 2. ⛶ Rectangular Region
-        self.btn_region = QPushButton("⛶ Rectangular Region", self)
+        self.btn_region = QPushButton("Rectangular Region", self)
+        self.btn_region.setIcon(get_tool_icon("region"))
+        self.btn_region.setIconSize(QSize(18, 18))
+        self.btn_region.setFixedHeight(34)
         self.btn_region.setToolTip("Draw a rectangular region on screen (or click and drag directly)")
         self.btn_region.clicked.connect(self.regionModeSelected.emit)
         layout.addWidget(self.btn_region)
 
         # 3. 🪟 Window
-        self.btn_window = QPushButton("🪟 Window", self)
+        self.btn_window = QPushButton("Window", self)
+        self.btn_window.setIcon(get_tool_icon("window"))
+        self.btn_window.setIconSize(QSize(18, 18))
+        self.btn_window.setFixedHeight(34)
         self.btn_window.setToolTip("Capture active or clicked window")
         self.btn_window.clicked.connect(self.windowCaptureTriggered.emit)
         layout.addWidget(self.btn_window)
 
         # 4. 🖥️ Full Screen
-        self.btn_fullscreen = QPushButton("🖥️ Full Screen", self)
+        self.btn_fullscreen = QPushButton("Full Screen", self)
+        self.btn_fullscreen.setIcon(get_tool_icon("fullscreen"))
+        self.btn_fullscreen.setIconSize(QSize(18, 18))
+        self.btn_fullscreen.setFixedHeight(34)
         self.btn_fullscreen.setToolTip("Capture all screens / entire workspace")
         self.btn_fullscreen.clicked.connect(self.fullscreenCaptureTriggered.emit)
         layout.addWidget(self.btn_fullscreen)
@@ -226,21 +253,30 @@ class FloatingLaunchPill(QFrame):
 
         # 5. ⏱️ Delay Dropdown
         self.btn_delay = QToolButton(self)
-        self.btn_delay.setText("⏱️ Delay: None ▾")
+        self.btn_delay.setText(" Delay: None")
+        self.btn_delay.setIcon(QIcon.fromTheme("chronometer"))
+        self.btn_delay.setIconSize(QSize(16, 16))
+        self.btn_delay.setFixedHeight(34)
         self.btn_delay.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._setup_delay_menu()
         layout.addWidget(self.btn_delay)
 
         # 6. ⚙️ Options Menu
         self.btn_options = QToolButton(self)
-        self.btn_options.setText("⚙️ Options ▾")
+        self.btn_options.setText(" Options")
+        self.btn_options.setIcon(QIcon.fromTheme("configure"))
+        self.btn_options.setIconSize(QSize(16, 16))
+        self.btn_options.setFixedHeight(34)
         self.btn_options.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._setup_options_menu()
         layout.addWidget(self.btn_options)
 
         # 7. ✕ Cancel
-        self.btn_cancel = QPushButton("✕ Cancel", self)
+        self.btn_cancel = QPushButton(" Cancel", self)
         self.btn_cancel.setObjectName("btnCancel")
+        self.btn_cancel.setIcon(QIcon.fromTheme("dialog-cancel"))
+        self.btn_cancel.setIconSize(QSize(16, 16))
+        self.btn_cancel.setFixedHeight(34)
         self.btn_cancel.setToolTip("Close OmniShot (Esc)")
         self.btn_cancel.clicked.connect(self.cancelTriggered.emit)
         layout.addWidget(self.btn_cancel)
@@ -649,27 +685,27 @@ class SpectacleLaunchOverlay(QWidget):
         if not r or r.isEmpty():
             painter.fillRect(self.rect(), dim_color)
 
-            # Draw Centered Guidance Prompt
+            # Draw Centered Guidance Prompt Card
             painter.save()
-            painter.setPen(QPen(QColor(0, 0, 0, 180), 2))
-            font = QFont("Noto Sans", 18, QFont.Weight.Bold)
+            card_w = 620
+            card_h = 96
+            card_rect = QRect((self.width() - card_w) // 2, self.height() // 2 - 75, card_w, card_h)
+
+            painter.setPen(QPen(QColor(255, 255, 255, 35), 1))
+            painter.setBrush(QBrush(QColor(18, 22, 28, 225)))
+            painter.drawRoundedRect(card_rect, 18, 18)
+
+            font = QFont("Noto Sans", 15, QFont.Weight.Bold)
             painter.setFont(font)
-            
-            prompt_rect = QRect(0, self.height() // 2 - 80, self.width(), 90)
-            
-            # Subtle drop shadow
-            painter.drawText(prompt_rect.adjusted(1, 1, 1, 1), Qt.AlignmentFlag.AlignCenter, self._prompt_text)
-            
-            # Text color (emerald green if scroll mode, else crisp white)
             text_color = QColor("#2ecc71") if self._is_scroll_mode_pending else QColor("#ffffff")
             painter.setPen(text_color)
-            painter.drawText(prompt_rect, Qt.AlignmentFlag.AlignCenter, self._prompt_text)
+            title_rect = QRect(card_rect.left(), card_rect.top() + 14, card_w, 42)
+            painter.drawText(title_rect, Qt.AlignmentFlag.AlignCenter, self._prompt_text)
 
-            # Subtitle
             sub_font = QFont("Noto Sans", 11, QFont.Weight.Normal)
             painter.setFont(sub_font)
-            painter.setPen(QColor("#bdc3c7"))
-            sub_rect = QRect(0, self.height() // 2 + 15, self.width(), 30)
+            painter.setPen(QColor("#a0a8b4"))
+            sub_rect = QRect(card_rect.left(), card_rect.top() + 56, card_w, 26)
             painter.drawText(sub_rect, Qt.AlignmentFlag.AlignCenter, "Press Enter to capture full screen • Esc to cancel")
             painter.restore()
 

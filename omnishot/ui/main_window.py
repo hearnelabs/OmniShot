@@ -1,22 +1,22 @@
 """
-OmniShot Main Window - ShareX Professional Image Editor
-Faithfully implements the ShareX Image Editor layout and annotation suite:
-- Primary top tool ribbon (Pointer, Shapes, Lines, Text, Speech, Step, Loupe, Redact, Crop)
-- Secondary contextual options bar (Border Color, Fill Color, Thickness, Font Size, Bold/Italic/Underline, Shadow)
-- Bottom floating action capsule (Zoom, Finish, Cancel, Copy, Save, Save As, OCR, Pin)
-- Seamless integration with native KWin Wayland Scrolling Capture
+OmniShot Main Window - ShareX Professional Image Editor (KDE Plasma 6 Native)
+Faithfully implements the modern ShareX Pro layout and design:
+- Primary Categorized Ribbon (Drawing, Shapes, Redact, Badges, Output) with crisp vector icons
+- Collapsible Right-Hand Properties Panel (Color Palette grid, Active swatch, Sliders for Thickness & Opacity, Font settings, Toggles)
+- Centered Studio Viewport with image drop-shadow and dynamic resolution pill badge
+- Bottom Floating Action Capsule (Zoom, Finish, Discard, Copy, Save, Save As, OCR, Pin)
 """
 
 import os
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QToolBar,
     QToolButton, QPushButton, QLabel, QScrollArea, QFileDialog,
     QMessageBox, QDialog, QTextEdit, QStatusBar, QSpinBox,
-    QColorDialog, QButtonGroup, QFrame, QMenu
+    QColorDialog, QButtonGroup, QFrame, QMenu, QSlider, QSplitter
 )
 from PySide6.QtGui import (
     QImage, QPixmap, QIcon, QKeySequence, QShortcut, QColor, QFont, QClipboard,
@@ -31,7 +31,9 @@ from .canvas import (
     RectAnnotation, SpeechBalloonAnnotation, StepBadgeAnnotation,
     RedactAnnotation
 )
+from .icons import get_tool_icon
 from .theme import SHAREX_DARK_QSS
+
 
 class OCRDialog(QDialog):
     def __init__(self, text: str, parent=None):
@@ -52,10 +54,10 @@ class OCRDialog(QDialog):
         self.text_edit.setPlainText(text)
         self.text_edit.setStyleSheet("""
             QTextEdit {
-                background-color: #1e1e1e;
+                background-color: #1a1d24;
                 color: #d4d4d4;
-                border: 1px solid #3e3e42;
-                border-radius: 4px;
+                border: 1px solid #3e444c;
+                border-radius: 6px;
                 padding: 8px;
                 font-family: monospace;
                 font-size: 13px;
@@ -65,7 +67,18 @@ class OCRDialog(QDialog):
 
         btn_layout = QHBoxLayout()
         btn_copy = QPushButton("📋 Copy to Clipboard", self)
-        btn_copy.setStyleSheet("background-color: #0078d4; color: #ffffff; padding: 6px 16px; border-radius: 4px;")
+        btn_copy.setStyleSheet("""
+            QPushButton {
+                background-color: #0078d4;
+                color: #ffffff;
+                padding: 6px 18px;
+                border-radius: 6px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
         btn_copy.clicked.connect(self._copy_text)
 
         btn_close = QPushButton("Close", self)
@@ -82,6 +95,235 @@ class OCRDialog(QDialog):
         QMessageBox.information(self, "Copied", "Text copied to clipboard!")
 
 
+class RibbonGroup(QFrame):
+    """Categorized tool group card in the top ribbon."""
+    def __init__(self, title: str, parent=None):
+        super().__init__(parent)
+        self.setObjectName("ribbonGroup")
+
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(4, 4, 4, 3)
+        self.main_layout.setSpacing(2)
+
+        self.btn_layout = QHBoxLayout()
+        self.btn_layout.setContentsMargins(0, 0, 0, 0)
+        self.btn_layout.setSpacing(3)
+        self.main_layout.addLayout(self.btn_layout)
+
+        self.lbl_title = QLabel(title, self)
+        self.lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_title.setStyleSheet("color: #7f8c8d; font-size: 10px; font-weight: bold; text-transform: uppercase; margin-top: 1px;")
+        self.main_layout.addWidget(self.lbl_title)
+
+    def add_widget(self, widget: QWidget):
+        self.btn_layout.addWidget(widget)
+
+
+class PropertiesSidebar(QFrame):
+    """Collapsible right-hand properties panel matching Mockup 2."""
+    colorSelected = Signal(QColor)
+    thicknessChanged = Signal(int)
+    opacityChanged = Signal(int)
+    fontSizeChanged = Signal(int)
+    shadowToggled = Signal(bool)
+    boldToggled = Signal(bool)
+    italicToggled = Signal(bool)
+    underlineToggled = Signal(bool)
+
+    PALETTE_COLORS = [
+        "#000000", "#4a4a4a", "#e74c3c", "#e67e22",
+        "#f1c40f", "#2ecc71", "#1abc9c", "#00bcd4",
+        "#0078d4", "#2980b9", "#9b59b6", "#8e44ad",
+        "#e91e63", "#795548", "#bdc3c7", "#ffffff",
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("propertiesPanel")
+        self.setFixedWidth(240)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+
+        # 1. Color Palette Header
+        lbl_pal = QLabel("Color Palette", self)
+        lbl_pal.setProperty("class", "panelHeader")
+        layout.addWidget(lbl_pal)
+
+        # Palette 4x4 Grid
+        swatch_frame = QFrame(self)
+        grid = QHBoxLayout(swatch_frame)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(4)
+
+        col_layout1 = QVBoxLayout()
+        col_layout1.setSpacing(4)
+        col_layout2 = QVBoxLayout()
+        col_layout2.setSpacing(4)
+        col_layout3 = QVBoxLayout()
+        col_layout3.setSpacing(4)
+        col_layout4 = QVBoxLayout()
+        col_layout4.setSpacing(4)
+        cols = [col_layout1, col_layout2, col_layout3, col_layout4]
+
+        self.swatch_buttons: List[QPushButton] = []
+        for idx, hex_code in enumerate(self.PALETTE_COLORS):
+            btn = QPushButton(self)
+            btn.setProperty("class", "swatchBtn")
+            btn.setStyleSheet(f"background-color: {hex_code};")
+            btn.setToolTip(hex_code)
+            btn.clicked.connect(lambda ch, c=hex_code: self._on_swatch_clicked(c))
+            cols[idx % 4].addWidget(btn)
+            self.swatch_buttons.append(btn)
+
+        for col in cols:
+            grid.addLayout(col)
+        layout.addWidget(swatch_frame)
+
+        # Active Color Bar with Dropper
+        bar_layout = QHBoxLayout()
+        bar_layout.setContentsMargins(0, 4, 0, 4)
+        bar_layout.setSpacing(6)
+
+        self.active_color_bar = QLabel(self)
+        self.active_color_bar.setFixedHeight(26)
+        self.active_color_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.active_color_bar.setStyleSheet("background-color: #e74c3c; border-radius: 4px; font-weight: bold; color: #ffffff;")
+        bar_layout.addWidget(self.active_color_bar, 1)
+
+        btn_dropper = QPushButton(self)
+        btn_dropper.setIcon(get_tool_icon("dropper"))
+        btn_dropper.setIconSize(QSize(18, 18))
+        btn_dropper.setFixedSize(32, 26)
+        btn_dropper.setToolTip("Custom Color Picker...")
+        btn_dropper.clicked.connect(self._open_custom_color_picker)
+        bar_layout.addWidget(btn_dropper)
+
+        layout.addLayout(bar_layout)
+
+        # Separator line
+        sep = QFrame(self)
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet("background-color: #2a2e36; height: 1px;")
+        layout.addWidget(sep)
+
+        # 2. Stroke / Text Properties Header
+        lbl_props = QLabel("Stroke / Text", self)
+        lbl_props.setProperty("class", "panelHeader")
+        layout.addWidget(lbl_props)
+
+        # Stroke Thickness
+        thick_head = QHBoxLayout()
+        lbl_thick = QLabel("Stroke Thickness", self)
+        lbl_thick.setProperty("class", "propLabel")
+        self.lbl_thick_val = QLabel("4 px", self)
+        self.lbl_thick_val.setStyleSheet("color: #3daee9; font-weight: bold;")
+        thick_head.addWidget(lbl_thick)
+        thick_head.addStretch()
+        thick_head.addWidget(self.lbl_thick_val)
+        layout.addLayout(thick_head)
+
+        self.slider_thick = QSlider(Qt.Orientation.Horizontal, self)
+        self.slider_thick.setRange(1, 40)
+        self.slider_thick.setValue(4)
+        self.slider_thick.valueChanged.connect(self._on_thick_slider_changed)
+        layout.addWidget(self.slider_thick)
+
+        # Opacity
+        opac_head = QHBoxLayout()
+        lbl_opac = QLabel("Opacity", self)
+        lbl_opac.setProperty("class", "propLabel")
+        self.lbl_opac_val = QLabel("100%", self)
+        self.lbl_opac_val.setStyleSheet("color: #3daee9; font-weight: bold;")
+        opac_head.addWidget(lbl_opac)
+        opac_head.addStretch()
+        opac_head.addWidget(self.lbl_opac_val)
+        layout.addLayout(opac_head)
+
+        self.slider_opac = QSlider(Qt.Orientation.Horizontal, self)
+        self.slider_opac.setRange(10, 100)
+        self.slider_opac.setValue(100)
+        self.slider_opac.valueChanged.connect(self._on_opac_slider_changed)
+        layout.addWidget(self.slider_opac)
+
+        # Font Size
+        font_head = QHBoxLayout()
+        lbl_font = QLabel("Font Size", self)
+        lbl_font.setProperty("class", "propLabel")
+        font_head.addWidget(lbl_font)
+        font_head.addStretch()
+
+        self.spin_font = QSpinBox(self)
+        self.spin_font.setRange(10, 80)
+        self.spin_font.setValue(24)
+        self.spin_font.setSuffix(" pt")
+        self.spin_font.valueChanged.connect(self.fontSizeChanged.emit)
+        font_head.addWidget(self.spin_font)
+        layout.addLayout(font_head)
+
+        # Toggles: Shadow, Bold, Italic, Underline
+        toggle_layout = QHBoxLayout()
+        toggle_layout.setSpacing(6)
+
+        self.btn_shadow = QPushButton("Shadow", self)
+        self.btn_shadow.setCheckable(True)
+        self.btn_shadow.setChecked(True)
+        self.btn_shadow.setStyleSheet("padding: 5px 8px; font-size: 11px;")
+        self.btn_shadow.clicked.connect(self.shadowToggled.emit)
+        toggle_layout.addWidget(self.btn_shadow)
+
+        self.btn_bold = QPushButton("B", self)
+        self.btn_bold.setCheckable(True)
+        self.btn_bold.setChecked(True)
+        self.btn_bold.setFixedWidth(28)
+        self.btn_bold.setStyleSheet("font-weight: bold;")
+        self.btn_bold.clicked.connect(self.boldToggled.emit)
+        toggle_layout.addWidget(self.btn_bold)
+
+        self.btn_italic = QPushButton("I", self)
+        self.btn_italic.setCheckable(True)
+        self.btn_italic.setFixedWidth(28)
+        self.btn_italic.setStyleSheet("font-style: italic;")
+        self.btn_italic.clicked.connect(self.italicToggled.emit)
+        toggle_layout.addWidget(self.btn_italic)
+
+        self.btn_underline = QPushButton("U", self)
+        self.btn_underline.setCheckable(True)
+        self.btn_underline.setFixedWidth(28)
+        self.btn_underline.setStyleSheet("text-decoration: underline;")
+        self.btn_underline.clicked.connect(self.underlineToggled.emit)
+        toggle_layout.addWidget(self.btn_underline)
+
+        layout.addLayout(toggle_layout)
+        layout.addStretch()
+
+        self.set_current_color(QColor("#ff0000"))
+
+    def _on_swatch_clicked(self, hex_code: str):
+        c = QColor(hex_code)
+        self.set_current_color(c)
+        self.colorSelected.emit(c)
+
+    def _open_custom_color_picker(self):
+        c = QColorDialog.getColor(QColor(self.active_color_bar.text()), self, "Select Custom Color")
+        if c.isValid():
+            self.set_current_color(c)
+            self.colorSelected.emit(c)
+
+    def set_current_color(self, color: QColor):
+        self.active_color_bar.setStyleSheet(f"background-color: {color.name()}; border-radius: 4px; font-weight: bold; color: {'#ffffff' if color.lightness() < 130 else '#000000'};")
+        self.active_color_bar.setText(color.name().upper())
+
+    def _on_thick_slider_changed(self, val: int):
+        self.lbl_thick_val.setText(f"{val} px")
+        self.thicknessChanged.emit(val)
+
+    def _on_opac_slider_changed(self, val: int):
+        self.lbl_opac_val.setText(f"{val}%")
+        self.opacityChanged.emit(val)
+
+
 class OmniShotMainWindow(QMainWindow):
     requestCapture = Signal(str) # "region", "scroll_auto", "scroll_manual", "fullscreen", "window"
 
@@ -91,7 +333,7 @@ class OmniShotMainWindow(QMainWindow):
         self.current_filename: str = "OmniShot_Image.png"
         self._is_pinned = False
 
-        self.resize(1150, 800)
+        self.resize(1180, 820)
         self.setStyleSheet(SHAREX_DARK_QSS)
 
         self._init_ui()
@@ -99,7 +341,13 @@ class OmniShotMainWindow(QMainWindow):
         self._update_window_title()
 
     def _init_ui(self):
-        # 1. Central Viewport with Checkered Canvas
+        root_widget = QWidget(self)
+        self.setCentralWidget(root_widget)
+        main_vbox = QVBoxLayout(root_widget)
+        main_vbox.setContentsMargins(0, 0, 0, 0)
+        main_vbox.setSpacing(0)
+
+        # 1. Canvas and Viewport
         self.canvas = AnnotationCanvas(self)
         self.canvas.statusMessage.connect(self._on_canvas_status)
         self.canvas.imageChanged.connect(self._on_image_changed)
@@ -109,188 +357,193 @@ class OmniShotMainWindow(QMainWindow):
         self.scroll_area.setWidgetResizable(False)
         self.scroll_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.scroll_area.setWidget(self.canvas)
-        self.setCentralWidget(self.scroll_area)
 
-        # 2. Toolbars
-        self._create_primary_ribbon()
-        self._create_contextual_options_bar()
+        # 2. Top Categorized Ribbon Bar
+        self.ribbon_bar = self._create_ribbon_bar()
+        main_vbox.addWidget(self.ribbon_bar)
+
+        # 3. Main Workspace Split: Canvas Area (Left) + Properties Sidebar (Right)
+        workspace = QWidget(self)
+        ws_layout = QHBoxLayout(workspace)
+        ws_layout.setContentsMargins(0, 0, 0, 0)
+        ws_layout.setSpacing(0)
+
+        # Viewport frame with floating pills
+        self.viewport_container = QWidget(self)
+        vp_layout = QVBoxLayout(self.viewport_container)
+        vp_layout.setContentsMargins(0, 0, 0, 0)
+        vp_layout.setSpacing(0)
+        vp_layout.addWidget(self.scroll_area)
+
+        ws_layout.addWidget(self.viewport_container, 1)
+
+        # Properties Sidebar (Right)
+        self.sidebar = PropertiesSidebar(self)
+        self.sidebar.colorSelected.connect(self._on_color_selected)
+        self.sidebar.thicknessChanged.connect(self._on_thickness_changed)
+        self.sidebar.opacityChanged.connect(self._on_opacity_changed)
+        self.sidebar.fontSizeChanged.connect(self._on_font_size_changed)
+        self.sidebar.shadowToggled.connect(self._on_shadow_toggled)
+        self.sidebar.boldToggled.connect(self._on_bold_toggled)
+        self.sidebar.italicToggled.connect(self._on_italic_toggled)
+        self.sidebar.underlineToggled.connect(self._on_underline_toggled)
+        ws_layout.addWidget(self.sidebar)
+
+        main_vbox.addWidget(workspace, 1)
 
         # 3. Bottom Floating Action Pill (ShareX signature capsule)
         self._create_bottom_action_pill()
 
-    def _update_window_title(self):
-        img = self.canvas.get_image()
-        if img and not img.isNull():
-            self.setWindowTitle(f"OmniShot - Image Editor - {img.width()}x{img.height()} - {self.current_filename}")
-        else:
-            self.setWindowTitle("OmniShot - Image Editor")
-
-    def _create_primary_ribbon(self):
-        """Row 1: ShareX-style Primary Annotation Tools Ribbon"""
-        tb = QToolBar("Primary Tools", self)
-        tb.setObjectName("primaryToolBar")
-        tb.setMovable(False)
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
+    def _create_ribbon_bar(self) -> QFrame:
+        """Categorized Ribbon with Drawing, Shapes, Redact, Badges, Output sections matching Mockup 2."""
+        ribbon = QFrame(self)
+        ribbon.setObjectName("ribbonBar")
+        layout = QHBoxLayout(ribbon)
+        layout.setContentsMargins(8, 6, 8, 4)
+        layout.setSpacing(6)
 
         self.tool_button_group = QButtonGroup(self)
         self.tool_button_group.setExclusive(True)
 
-        tools = [
-            (ToolType.POINTER, "↖", "Select / Move (V)"),
-            (ToolType.RECTANGLE, "🔲", "Rectangle (R)"),
-            (ToolType.ROUNDED_RECT, "▢", "Rounded Rectangle (Shift+R)"),
-            (ToolType.ELLIPSE, "⭕", "Ellipse (E)"),
-            (ToolType.LINE, "─", "Line (L)"),
-            (ToolType.ARROW, "➔", "Arrow (A)"),
-            (ToolType.PEN, "✏️", "Freehand Pen (P)"),
-            (ToolType.HIGHLIGHTER, "🖍️", "Highlighter (H)"),
-            (ToolType.TEXT, "T", "Text (T)"),
-            (ToolType.SPEECH_BALLOON, "💬", "Speech Balloon (C)"),
-            (ToolType.STEP_BADGE, "#", "Step Badges 1-2-3 (S)"),
-            (ToolType.MAGNIFY, "☡", "Magnifier Loupe (M)"),
-            (ToolType.BLUR, "💧", "Blur Redaction (B)"),
-            (ToolType.PIXELATE, "▦", "Pixelate Redaction (X)"),
-            (ToolType.CROP, "✂️", "Crop Canvas (K)"),
-        ]
-
-        for tool_id, icon_char, tooltip in tools:
+        def add_ribbon_btn(group: RibbonGroup, tool_id: str, label: str, icon_name: str, tooltip: str, is_default: bool = False):
             btn = QToolButton(self)
-            btn.setText(icon_char)
+            btn.setProperty("class", "ribbonBtn")
+            btn.setText(label)
+            btn.setIcon(get_tool_icon(icon_name))
+            btn.setIconSize(QSize(22, 22))
+            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+            btn.setFixedSize(60, 56)
             btn.setCheckable(True)
             btn.setToolTip(tooltip)
-            font = btn.font()
-            font.setPointSize(13)
-            font.setBold(True)
-            btn.setFont(font)
-            if tool_id == ToolType.POINTER:
+            if is_default:
                 btn.setChecked(True)
             btn.clicked.connect(lambda checked, t=tool_id: self._on_tool_selected(t))
             self.tool_button_group.addButton(btn)
-            tb.addWidget(btn)
+            group.add_widget(btn)
+            return btn
 
-        tb.addSeparator()
+        def add_divider():
+            sep = QFrame(ribbon)
+            sep.setObjectName("groupDivider")
+            sep.setFrameShape(QFrame.Shape.VLine)
+            layout.addWidget(sep)
 
-        # Capture Actions directly in top bar
-        btn_scroll = QToolButton(self)
-        btn_scroll.setObjectName("scrollingCaptureBtn")
-        btn_scroll.setText("📜 Scrolling Capture")
-        btn_scroll.setToolTip("Start Wayland Scrolling Capture (Auto / Manual)")
+        # Group 1: Drawing
+        grp_draw = RibbonGroup("Drawing", ribbon)
+        add_ribbon_btn(grp_draw, ToolType.POINTER, "Pointer", "pointer", "Select & Move Annotations (V)", True)
+        add_ribbon_btn(grp_draw, ToolType.PEN, "Pen", "pen", "Freehand Pen (P)")
+        add_ribbon_btn(grp_draw, ToolType.ARROW, "Arrow", "arrow", "Line with Arrowhead (A)")
+        add_ribbon_btn(grp_draw, ToolType.HIGHLIGHTER, "Highlight", "highlighter", "Translucent Highlighter (H)")
+        layout.addWidget(grp_draw)
+        add_divider()
+
+        # Group 2: Shapes
+        grp_shapes = RibbonGroup("Shapes", ribbon)
+        add_ribbon_btn(grp_shapes, ToolType.RECTANGLE, "Box", "box", "Rectangle Box (R)")
+        add_ribbon_btn(grp_shapes, ToolType.ROUNDED_RECT, "Rounded", "rounded_rect", "Rounded Rectangle (Shift+R)")
+        add_ribbon_btn(grp_shapes, ToolType.ELLIPSE, "Circle", "circle", "Circle / Ellipse (E)")
+        add_ribbon_btn(grp_shapes, ToolType.LINE, "Line", "arrow", "Straight Line (L)")
+        layout.addWidget(grp_shapes)
+        add_divider()
+
+        # Group 3: Redact
+        grp_redact = RibbonGroup("Redact", ribbon)
+        add_ribbon_btn(grp_redact, ToolType.BLUR, "Blur", "blur", "Gaussian Blur Redaction (B)")
+        add_ribbon_btn(grp_redact, ToolType.PIXELATE, "Pixelate", "pixelate", "Checkered Mosaic Redaction (X)")
+        add_ribbon_btn(grp_redact, ToolType.CROP, "Crop", "crop", "Crop Canvas (K)")
+        layout.addWidget(grp_redact)
+        add_divider()
+
+        # Group 4: Badges
+        grp_badges = RibbonGroup("Badges", ribbon)
+        add_ribbon_btn(grp_badges, ToolType.STEP_BADGE, "Steps", "step_badge", "Sequential Step Badges 1-2-3 (S)")
+        add_ribbon_btn(grp_badges, ToolType.SPEECH_BALLOON, "Balloon", "speech_balloon", "Speech Balloon Bubble (C)")
+        add_ribbon_btn(grp_badges, ToolType.TEXT, "Text", "text", "Rich Text Box (T)")
+        layout.addWidget(grp_badges)
+        add_divider()
+
+        # Group 5: Output
+        grp_output = RibbonGroup("Output", ribbon)
+
+        btn_scroll = QToolButton(ribbon)
+        btn_scroll.setObjectName("scrollingCaptureRibbonBtn")
+        btn_scroll.setText("Scroll")
+        btn_scroll.setIcon(get_tool_icon("scrolling_capture"))
+        btn_scroll.setIconSize(QSize(22, 22))
+        btn_scroll.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        btn_scroll.setFixedSize(58, 56)
+        btn_scroll.setToolTip("Start Wayland Scrolling Capture")
         btn_scroll.clicked.connect(lambda: self.requestCapture.emit("scroll_auto"))
-        tb.addWidget(btn_scroll)
+        grp_output.add_widget(btn_scroll)
 
-        btn_snip = QToolButton(self)
-        btn_snip.setText("📸 New Snip")
-        btn_snip.setToolTip("Capture a regional snip (Shift+Print)")
-        btn_snip.clicked.connect(lambda: self.requestCapture.emit("region"))
-        tb.addWidget(btn_snip)
+        btn_copy = QToolButton(ribbon)
+        btn_copy.setProperty("class", "ribbonBtn")
+        btn_copy.setText("Copy")
+        btn_copy.setIcon(get_tool_icon("copy"))
+        btn_copy.setIconSize(QSize(22, 22))
+        btn_copy.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        btn_copy.setFixedSize(54, 56)
+        btn_copy.setToolTip("Copy to Clipboard (Ctrl+C)")
+        btn_copy.clicked.connect(self.copy_to_clipboard)
+        grp_output.add_widget(btn_copy)
 
-    def _create_contextual_options_bar(self):
-        """Row 2: Contextual Tool Options Bar (Directly underneath the tool ribbon)"""
-        tb = QToolBar("Tool Options", self)
-        tb.setObjectName("contextualToolBar")
-        tb.setMovable(False)
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
-        self.context_bar = tb
+        btn_save = QToolButton(ribbon)
+        btn_save.setProperty("class", "ribbonBtn")
+        btn_save.setText("Save")
+        btn_save.setIcon(get_tool_icon("save"))
+        btn_save.setIconSize(QSize(22, 22))
+        btn_save.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        btn_save.setFixedSize(52, 56)
+        btn_save.setToolTip("Save Image (Ctrl+S)")
+        btn_save.clicked.connect(self.quick_save)
+        grp_output.add_widget(btn_save)
 
-        # 1. Border / Stroke Color Swatch Button
-        self.btn_stroke_color = QToolButton(self)
-        self.btn_stroke_color.setText("  Border  ▾")
-        self.btn_stroke_color.setToolTip("Choose Border / Stroke Color")
-        self.btn_stroke_color.clicked.connect(self._pick_stroke_color)
-        tb.addWidget(self.btn_stroke_color)
-        self._update_color_button_icon(self.btn_stroke_color, self.canvas.current_stroke_color)
+        btn_ocr = QToolButton(ribbon)
+        btn_ocr.setProperty("class", "ribbonBtn")
+        btn_ocr.setText("OCR")
+        btn_ocr.setIcon(get_tool_icon("ocr"))
+        btn_ocr.setIconSize(QSize(22, 22))
+        btn_ocr.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        btn_ocr.setFixedSize(52, 56)
+        btn_ocr.setToolTip("Extract Text via OCR")
+        btn_ocr.clicked.connect(self.extract_ocr_text)
+        grp_output.add_widget(btn_ocr)
 
-        # 2. Fill Color Swatch Button
-        self.btn_fill_color = QToolButton(self)
-        self.btn_fill_color.setText("  Fill  ▾")
-        self.btn_fill_color.setToolTip("Choose Fill Color (or Transparent)")
-        self.btn_fill_color.clicked.connect(self._pick_fill_color)
-        tb.addWidget(self.btn_fill_color)
-        self._update_color_button_icon(self.btn_fill_color, self.canvas.current_fill_color)
+        layout.addWidget(grp_output)
+        layout.addStretch()
 
-        tb.addSeparator()
+        # Far right: Undo / Redo / Sidebar Toggle
+        btn_undo = QToolButton(ribbon)
+        btn_undo.setText("↩")
+        btn_undo.setToolTip("Undo (Ctrl+Z)")
+        btn_undo.setFixedSize(32, 32)
+        btn_undo.clicked.connect(self.canvas.undo)
+        layout.addWidget(btn_undo)
 
-        # 3. Stroke Thickness SpinBox
-        lbl_w = QLabel(" Thickness: ", self)
-        tb.addWidget(lbl_w)
-        self.spin_thickness = QSpinBox(self)
-        self.spin_thickness.setRange(1, 40)
-        self.spin_thickness.setValue(self.canvas.current_stroke_width)
-        self.spin_thickness.setSuffix(" px")
-        self.spin_thickness.valueChanged.connect(self._on_thickness_changed)
-        tb.addWidget(self.spin_thickness)
+        btn_redo = QToolButton(ribbon)
+        btn_redo.setText("↪")
+        btn_redo.setToolTip("Redo (Ctrl+Y)")
+        btn_redo.setFixedSize(32, 32)
+        btn_redo.clicked.connect(self.canvas.redo)
+        layout.addWidget(btn_redo)
 
-        tb.addSeparator()
+        btn_toggle_side = QToolButton(ribbon)
+        btn_toggle_side.setText("🎨")
+        btn_toggle_side.setToolTip("Toggle Color Palette & Properties Sidebar")
+        btn_toggle_side.setFixedSize(32, 32)
+        btn_toggle_side.clicked.connect(self._toggle_sidebar)
+        layout.addWidget(btn_toggle_side)
 
-        # 4. Text Font Size SpinBox
-        self.lbl_font_size = QLabel(" Font Size: ", self)
-        tb.addWidget(self.lbl_font_size)
-        self.spin_font_size = QSpinBox(self)
-        self.spin_font_size.setRange(8, 120)
-        self.spin_font_size.setValue(self.canvas.current_font_size)
-        self.spin_font_size.setSuffix(" pt")
-        self.spin_font_size.valueChanged.connect(self._on_font_size_changed)
-        tb.addWidget(self.spin_font_size)
-
-        # 5. Bold, Italic, Underline Toggles
-        self.btn_bold = QToolButton(self)
-        self.btn_bold.setText("B")
-        self.btn_bold.setCheckable(True)
-        self.btn_bold.setChecked(True)
-        font_b = self.btn_bold.font()
-        font_b.setBold(True)
-        self.btn_bold.setFont(font_b)
-        self.btn_bold.clicked.connect(self._on_bold_toggled)
-        tb.addWidget(self.btn_bold)
-
-        self.btn_italic = QToolButton(self)
-        self.btn_italic.setText("I")
-        self.btn_italic.setCheckable(True)
-        font_i = self.btn_italic.font()
-        font_i.setItalic(True)
-        self.btn_italic.setFont(font_i)
-        self.btn_italic.clicked.connect(self._on_italic_toggled)
-        tb.addWidget(self.btn_italic)
-
-        self.btn_underline = QToolButton(self)
-        self.btn_underline.setText("U")
-        self.btn_underline.setCheckable(True)
-        font_u = self.btn_underline.font()
-        font_u.setUnderline(True)
-        self.btn_underline.setFont(font_u)
-        self.btn_underline.clicked.connect(self._on_underline_toggled)
-        tb.addWidget(self.btn_underline)
-
-        tb.addSeparator()
-
-        # 6. Drop Shadow Toggle
-        self.btn_shadow = QToolButton(self)
-        self.btn_shadow.setText("Shadow")
-        self.btn_shadow.setCheckable(True)
-        self.btn_shadow.setChecked(True)
-        self.btn_shadow.clicked.connect(self._on_shadow_toggled)
-        tb.addWidget(self.btn_shadow)
-
-        # 7. Undo / Redo
-        tb.addSeparator()
-        self.btn_undo = QToolButton(self)
-        self.btn_undo.setText("↩ Undo")
-        self.btn_undo.clicked.connect(self.canvas.undo)
-        tb.addWidget(self.btn_undo)
-
-        self.btn_redo = QToolButton(self)
-        self.btn_redo.setText("↪ Redo")
-        self.btn_redo.clicked.connect(self.canvas.redo)
-        tb.addWidget(self.btn_redo)
+        return ribbon
 
     def _create_bottom_action_pill(self):
         """Bottom Floating Action Capsule (Matching ShareX bottom pill)"""
-        self.action_pill = QFrame(self)
+        self.action_pill = QFrame(self.viewport_container)
         self.action_pill.setObjectName("bottomActionPill")
 
         layout = QHBoxLayout(self.action_pill)
-        layout.setContentsMargins(12, 4, 12, 4)
-        layout.setSpacing(10)
+        layout.setContentsMargins(10, 4, 10, 4)
+        layout.setSpacing(8)
 
         # 1. Zoom Dropdown Button
         self.btn_zoom = QToolButton(self)
@@ -306,7 +559,7 @@ class OmniShotMainWindow(QMainWindow):
         self.btn_zoom.setMenu(zoom_menu)
         layout.addWidget(self.btn_zoom)
 
-        # 2. Big Green Finish Play/Check Button (ShareX Signature)
+        # 2. Big Green Finish Play/Check Button
         self.btn_finish = QPushButton("▶", self)
         self.btn_finish.setObjectName("finishGreenBtn")
         self.btn_finish.setToolTip("Finish & Copy to Clipboard")
@@ -323,28 +576,28 @@ class OmniShotMainWindow(QMainWindow):
         # 4. Standard action icons
         self.btn_copy = QToolButton(self)
         self.btn_copy.setObjectName("pillActionBtn")
-        self.btn_copy.setText("📋")
+        self.btn_copy.setIcon(get_tool_icon("copy"))
         self.btn_copy.setToolTip("Copy to Clipboard (Ctrl+C)")
         self.btn_copy.clicked.connect(self.copy_to_clipboard)
         layout.addWidget(self.btn_copy)
 
         self.btn_save = QToolButton(self)
         self.btn_save.setObjectName("pillActionBtn")
-        self.btn_save.setText("💾")
-        self.btn_save.setToolTip(f"Quick Save (Ctrl+S)")
+        self.btn_save.setIcon(get_tool_icon("save"))
+        self.btn_save.setToolTip("Quick Save (Ctrl+S)")
         self.btn_save.clicked.connect(self.quick_save)
         layout.addWidget(self.btn_save)
 
         self.btn_save_as = QToolButton(self)
         self.btn_save_as.setObjectName("pillActionBtn")
-        self.btn_save_as.setText("🗐")
+        self.btn_save_as.setIcon(get_tool_icon("save_as"))
         self.btn_save_as.setToolTip("Save As... (Ctrl+Shift+S)")
         self.btn_save_as.clicked.connect(self.save_as)
         layout.addWidget(self.btn_save_as)
 
         self.btn_ocr = QToolButton(self)
         self.btn_ocr.setObjectName("pillActionBtn")
-        self.btn_ocr.setText("🔤")
+        self.btn_ocr.setIcon(get_tool_icon("ocr"))
         self.btn_ocr.setToolTip("Extract Text (OCR)")
         self.btn_ocr.clicked.connect(self.extract_ocr_text)
         layout.addWidget(self.btn_ocr)
@@ -360,12 +613,11 @@ class OmniShotMainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        # Position floating pill at bottom center
         self.action_pill.adjustSize()
         pw = self.action_pill.width()
         ph = self.action_pill.height()
-        px = (self.width() - pw) // 2
-        py = self.height() - ph - 20
+        px = (self.viewport_container.width() - pw) // 2
+        py = self.viewport_container.height() - ph - 20
         self.action_pill.setGeometry(px, py, pw, ph)
         self.action_pill.raise_()
 
@@ -378,93 +630,18 @@ class OmniShotMainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl++"), self, self.canvas.zoom_in)
         QShortcut(QKeySequence("Ctrl+="), self, self.canvas.zoom_in)
         QShortcut(QKeySequence("Ctrl+-"), self, self.canvas.zoom_out)
-        QShortcut(QKeySequence("Ctrl+0"), self, self.canvas.zoom_reset)
 
-        # Single key tool shortcuts (ShareX standards)
-        QShortcut(QKeySequence("V"), self, lambda: self._select_tool_by_type(ToolType.POINTER))
-        QShortcut(QKeySequence("R"), self, lambda: self._select_tool_by_type(ToolType.RECTANGLE))
-        QShortcut(QKeySequence("E"), self, lambda: self._select_tool_by_type(ToolType.ELLIPSE))
-        QShortcut(QKeySequence("L"), self, lambda: self._select_tool_by_type(ToolType.LINE))
-        QShortcut(QKeySequence("A"), self, lambda: self._select_tool_by_type(ToolType.ARROW))
-        QShortcut(QKeySequence("P"), self, lambda: self._select_tool_by_type(ToolType.PEN))
-        QShortcut(QKeySequence("H"), self, lambda: self._select_tool_by_type(ToolType.HIGHLIGHTER))
-        QShortcut(QKeySequence("T"), self, lambda: self._select_tool_by_type(ToolType.TEXT))
-        QShortcut(QKeySequence("C"), self, lambda: self._select_tool_by_type(ToolType.SPEECH_BALLOON))
-        QShortcut(QKeySequence("S"), self, lambda: self._select_tool_by_type(ToolType.STEP_BADGE))
-        QShortcut(QKeySequence("M"), self, lambda: self._select_tool_by_type(ToolType.MAGNIFY))
-        QShortcut(QKeySequence("B"), self, lambda: self._select_tool_by_type(ToolType.BLUR))
-        QShortcut(QKeySequence("X"), self, lambda: self._select_tool_by_type(ToolType.PIXELATE))
-        QShortcut(QKeySequence("K"), self, lambda: self._select_tool_by_type(ToolType.CROP))
-
-    def _select_tool_by_type(self, tool_type: str):
-        for btn in self.tool_button_group.buttons():
-            # Match tool
-            if getattr(btn, "_tool_id", None) == tool_type:
-                btn.setChecked(True)
-                self._on_tool_selected(tool_type)
-                break
+    def _toggle_sidebar(self):
+        self.sidebar.setVisible(not self.sidebar.isVisible())
 
     def _on_tool_selected(self, tool_type: str):
-        self.canvas.current_tool = tool_type
-        # Show/hide relevant contextual options based on tool
-        is_text_tool = (tool_type in (ToolType.TEXT, ToolType.SPEECH_BALLOON))
-        self.lbl_font_size.setVisible(is_text_tool)
-        self.spin_font_size.setVisible(is_text_tool)
-        self.btn_bold.setVisible(is_text_tool)
-        self.btn_italic.setVisible(is_text_tool)
-        self.btn_underline.setVisible(is_text_tool)
+        self.canvas.set_active_tool(tool_type)
 
-    def _update_color_button_icon(self, btn: QToolButton, color: QColor):
-        pix = QPixmap(18, 18)
-        if color.alpha() == 0:
-            pix.fill(Qt.GlobalColor.transparent)
-            p = QPainter(pix)
-            p.setPen(QPen(QColor("#cccccc"), 1.5))
-            p.drawRect(1, 1, 15, 15)
-            p.setPen(QPen(QColor("#e74c3c"), 2))
-            p.drawLine(2, 16, 16, 2)
-            p.end()
-        else:
-            pix.fill(color)
-            p = QPainter(pix)
-            p.setPen(QPen(QColor(255, 255, 255, 180), 1))
-            p.drawRect(0, 0, 17, 17)
-            p.end()
-        btn.setIcon(QIcon(pix))
-
-    def _pick_stroke_color(self):
-        c = QColorDialog.getColor(self.canvas.current_stroke_color, self, "Select Border Color")
-        if c.isValid():
-            self.canvas.current_stroke_color = c
-            self._update_color_button_icon(self.btn_stroke_color, c)
-            if self.canvas.selected_annotation:
-                self.canvas.selected_annotation.stroke_color = c
-                if isinstance(self.canvas.selected_annotation, TextAnnotation):
-                    self.canvas.selected_annotation.outline_color = c
-                elif isinstance(self.canvas.selected_annotation, StepBadgeAnnotation):
-                    self.canvas.selected_annotation.badge_color = c
-                self.canvas.update()
-
-    def _pick_fill_color(self):
-        menu = QMenu(self)
-        act_trans = menu.addAction("Transparent (No Fill)")
-        act_custom = menu.addAction("Custom Color...")
-        action = menu.exec(self.btn_fill_color.mapToGlobal(QPoint(0, self.btn_fill_color.height())))
-        if action == act_trans:
-            c = QColor(0, 0, 0, 0)
-            self.canvas.current_fill_color = c
-            self._update_color_button_icon(self.btn_fill_color, c)
-            if self.canvas.selected_annotation:
-                self.canvas.selected_annotation.fill_color = c
-                self.canvas.update()
-        elif action == act_custom:
-            c = QColorDialog.getColor(self.canvas.current_fill_color, self, "Select Fill Color", QColorDialog.ColorDialogOption.ShowAlphaChannel)
-            if c.isValid():
-                self.canvas.current_fill_color = c
-                self._update_color_button_icon(self.btn_fill_color, c)
-                if self.canvas.selected_annotation:
-                    self.canvas.selected_annotation.fill_color = c
-                    self.canvas.update()
+    def _on_color_selected(self, color: QColor):
+        self.canvas.current_stroke_color = color
+        if self.canvas.selected_annotation:
+            self.canvas.selected_annotation.stroke_color = color
+            self.canvas.update()
 
     def _on_thickness_changed(self, val: int):
         self.canvas.current_stroke_width = val
@@ -472,9 +649,20 @@ class OmniShotMainWindow(QMainWindow):
             self.canvas.selected_annotation.stroke_width = val
             self.canvas.update()
 
+    def _on_opacity_changed(self, val: int):
+        alpha = int(val * 255 / 100)
+        c = QColor(self.canvas.current_stroke_color)
+        c.setAlpha(alpha)
+        self.canvas.current_stroke_color = c
+        if self.canvas.selected_annotation:
+            sc = QColor(self.canvas.selected_annotation.stroke_color)
+            sc.setAlpha(alpha)
+            self.canvas.selected_annotation.stroke_color = sc
+            self.canvas.update()
+
     def _on_font_size_changed(self, val: int):
         self.canvas.current_font_size = val
-        if self.canvas.selected_annotation and isinstance(self.canvas.selected_annotation, (TextAnnotation, SpeechBalloonAnnotation)):
+        if self.canvas.selected_annotation and isinstance(self.canvas.selected_annotation, TextAnnotation):
             self.canvas.selected_annotation.font_size = val
             self.canvas.update()
 
@@ -504,16 +692,14 @@ class OmniShotMainWindow(QMainWindow):
 
     def _on_annotation_selection_changed(self, ann: Optional[BaseAnnotation]):
         if ann:
-            # Sync options bar to selected annotation
-            self.spin_thickness.setValue(ann.stroke_width)
-            self._update_color_button_icon(self.btn_stroke_color, ann.stroke_color)
-            self._update_color_button_icon(self.btn_fill_color, ann.fill_color)
-            self.btn_shadow.setChecked(ann.has_shadow)
+            self.sidebar.slider_thick.setValue(ann.stroke_width)
+            self.sidebar.set_current_color(QColor(ann.stroke_color))
+            self.sidebar.btn_shadow.setChecked(ann.has_shadow)
             if isinstance(ann, TextAnnotation):
-                self.spin_font_size.setValue(ann.font_size)
-                self.btn_bold.setChecked(ann.is_bold)
-                self.btn_italic.setChecked(ann.is_italic)
-                self.btn_underline.setChecked(ann.is_underline)
+                self.sidebar.spin_font.setValue(ann.font_size)
+                self.sidebar.btn_bold.setChecked(ann.is_bold)
+                self.sidebar.btn_italic.setChecked(ann.is_italic)
+                self.sidebar.btn_underline.setChecked(ann.is_underline)
 
     def _on_zoom_changed(self, zoom: float):
         self.btn_zoom.setText(f"🔍 {int(zoom * 100)}% ▾")
@@ -522,8 +708,8 @@ class OmniShotMainWindow(QMainWindow):
         img = self.canvas.get_image()
         if not img or img.isNull():
             return
-        vw = self.scroll_area.viewport().width() - 20
-        vh = self.scroll_area.viewport().height() - 20
+        vw = self.scroll_area.viewport().width() - 30
+        vh = self.scroll_area.viewport().height() - 30
         scale = min(vw / img.width(), vh / img.height(), 1.0)
         self.canvas.set_zoom(max(0.1, scale))
 
@@ -533,12 +719,20 @@ class OmniShotMainWindow(QMainWindow):
     def _on_image_changed(self):
         self._update_window_title()
 
+    def _update_window_title(self):
+        img = self.canvas.get_image()
+        if img and not img.isNull():
+            self.setWindowTitle(f"OmniShot - [Current Screenshot] - {img.width()} × {img.height()} px")
+        else:
+            self.setWindowTitle("OmniShot - [Current Screenshot]")
+
     def set_captured_image(self, image: QImage):
         self.canvas.set_image(image)
         self._update_window_title()
         self.show()
         self.raise_()
         self.activateWindow()
+        self._zoom_fit()
 
     def _finish_and_copy(self):
         self.copy_to_clipboard()

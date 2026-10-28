@@ -148,7 +148,7 @@ class TestOmniShot(unittest.TestCase):
         overlay.resize(800, 600)
         
         self.assertIsNotNone(overlay.bottom_pill)
-        self.assertEqual(overlay.bottom_pill.btn_scroll.text(), "📜 Scrolling Capture")
+        self.assertEqual(overlay.bottom_pill.btn_scroll.text(), "Scrolling Capture")
         self.assertEqual(overlay.top_pill.text(), "OmniShot - Ready")
         
         # Simulate selection
