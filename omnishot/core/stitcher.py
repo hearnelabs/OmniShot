@@ -212,10 +212,6 @@ class ScrollingStitcher:
                 if self.margin_y_bottom == 0 and c_ftr.value > 0:
                     self.margin_y_bottom = c_ftr.value
 
-                # If full-height capture, ensure footer margin is at least 80px so floating buttons/chat input are never duplicated
-                if self.margin_y_bottom == 0 and h >= 500:
-                    self.margin_y_bottom = 85
-
                 if self.margin_y_bottom >= h - 100:
                     self.margin_y_bottom = 0
                 if self.margin_y_top >= h / 3:

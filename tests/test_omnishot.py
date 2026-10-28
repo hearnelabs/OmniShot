@@ -320,6 +320,62 @@ class TestOmniShot(unittest.TestCase):
         if app_obj.main_window:
             app_obj.main_window.close()
 
+    def test_14_repeating_email_list_no_squash(self):
+        """Verify repetitive lists (identical senders/avatars) stitch without vertical squashing or overlap."""
+        from PySide6.QtGui import QFont
+        from PySide6.QtCore import Qt, QRect
+        w, h = 600, 500
+        full_doc = QImage(w, 2000, QImage.Format.Format_RGBX8888)
+        full_doc.fill(QColor(35, 38, 42))
+
+        p = QPainter(full_doc)
+        p.setFont(QFont("sans-serif", 10))
+
+        emails = [
+            ("Wed 10-21", "898246"), ("Tue 10-20", "123456"), ("Fri 10-23", "838951"),
+            ("Thu 10-22", "788564"), ("Wed 10-21", "898246"), ("Mon 10-19", "554433"),
+            ("Sun 10-18", "998877"), ("Sat 10-17", "665544"), ("Fri 10-16", "223344"),
+        ]
+
+        row_h = 60
+        for i in range(30):
+            y = i * row_h
+            p.setPen(QColor(60, 65, 72))
+            p.drawLine(0, y, w, y)
+            p.setBrush(QColor(50, 55, 60))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(20, y + 15, 30, 30)
+            p.setPen(QColor(200, 200, 200))
+            p.drawText(QRect(20, y + 15, 30, 30), Qt.AlignmentFlag.AlignCenter, "D")
+            date_str, code_str = emails[i % len(emails)]
+            p.setPen(QColor(230, 230, 230))
+            p.drawText(65, y + 25, "DoNotReply@connectwise.com")
+            p.setPen(QColor(180, 185, 190))
+            p.drawText(65, y + 42, "ConnectWise Manage Security Code")
+            p.setPen(QColor(140, 145, 150))
+            p.drawText(65, y + 55, f"Your security code is: {code_str} Please enter the code in...")
+            p.drawText(w - 100, y + 25, date_str)
+        p.end()
+
+        stitcher = ScrollingStitcher(margin_x_left=10, margin_x_right=24)
+        frame0 = full_doc.copy(0, 0, w, h)
+        stitcher.start(frame0)
+
+        shifts = [115, 120, 110, 125, 95]
+        curr_y = 0
+        for s in shifts:
+            curr_y += s
+            f = full_doc.copy(0, curr_y, w, h)
+            ok, d, msg = stitcher.add_frame(f)
+            self.assertTrue(ok)
+            self.assertEqual(d, s, f"Expected exact displacement {s}px, detected {d}px")
+
+        stitched = stitcher.get_stitched_image()
+        expected_total_h = h + sum(shifts)
+        self.assertEqual(stitched.height(), expected_total_h)
+        ground_truth = full_doc.copy(0, 0, w, expected_total_h)
+        self.assertEqual(stitched, ground_truth, "Stitched output must be bit-for-bit identical to ground truth with zero squashing")
+
 if __name__ == "__main__":
     unittest.main()
 
