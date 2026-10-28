@@ -243,7 +243,7 @@ class PropertiesSidebar(QFrame):
         layout.addLayout(opac_head)
 
         self.slider_opac = QSlider(Qt.Orientation.Horizontal, self)
-        self.slider_opac.setRange(10, 100)
+        self.slider_opac.setRange(1, 100)
         self.slider_opac.setValue(100)
         self.slider_opac.valueChanged.connect(self._on_opac_slider_changed)
         layout.addWidget(self.slider_opac)
@@ -666,6 +666,9 @@ class OmniShotMainWindow(QMainWindow):
 
     def _on_tool_selected(self, tool_type: str):
         self.canvas.set_active_tool(tool_type)
+        if tool_type == ToolType.HIGHLIGHTER:
+            if self.sidebar.slider_opac.value() > 50:
+                self.sidebar.slider_opac.setValue(35)
 
     def _on_color_selected(self, color: QColor):
         self.canvas.current_stroke_color = color

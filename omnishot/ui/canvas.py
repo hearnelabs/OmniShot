@@ -373,28 +373,52 @@ class FreehandAnnotation(BaseAnnotation):
         if len(self.points) < 2:
             return
 
-        painter.save()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-
         if self.is_highlighter:
-            # Scaled highlighter opacity (base 0.7 modulated by self.opacity)
-            painter.setOpacity(self.opacity * 0.7)
-            pen = QPen(self.stroke_qcolor, self.stroke_width * 3.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.SquareCap, Qt.PenJoinStyle.BevelJoin)
-            painter.setPen(pen)
+            # Single-pass scratch buffer prevents overlapping segment joint alpha accumulation,
+            # ensuring crystal-clear text readability even across hundreds of mouse sample points.
+            stroke_w = max(8.0, float(self.stroke_width) * 3.5)
+            effective_opacity = max(0.03, min(0.65, self.opacity * 0.45))
+
+            min_x = min(pt.x() for pt in self.points)
+            max_x = max(pt.x() for pt in self.points)
+            min_y = min(pt.y() for pt in self.points)
+            max_y = max(pt.y() for pt in self.points)
+            pad = int(stroke_w + 6)
+
+            bw = int(max(1, max_x - min_x + pad * 2))
+            bh = int(max(1, max_y - min_y + pad * 2))
+            tl = QPointF(min_x - pad, min_y - pad)
+
+            scratch = QImage(bw, bh, QImage.Format.Format_ARGB32_Premultiplied)
+            scratch.fill(0)
+
+            sp = QPainter(scratch)
+            sp.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            solid_color = QColor(self.stroke_qcolor)
+            solid_color.setAlpha(255)
+            sp.setPen(QPen(solid_color, stroke_w, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            local_pts = [pt - tl for pt in self.points]
+            sp.drawPolyline(local_pts)
+            sp.end()
+
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setOpacity(effective_opacity)
+            painter.drawImage(tl, scratch)
+            painter.restore()
         else:
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             painter.setOpacity(self.opacity)
             if self.has_shadow:
                 painter.setPen(QPen(QColor(0, 0, 0, 80), self.stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-                for i in range(len(self.points) - 1):
-                    painter.drawLine(self.points[i] + QPointF(2, 2), self.points[i+1] + QPointF(2, 2))
+                shadow_pts = [p + QPointF(2, 2) for p in self.points]
+                painter.drawPolyline(shadow_pts)
 
             pen = QPen(self.stroke_qcolor, self.stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
             painter.setPen(pen)
-
-        for i in range(len(self.points) - 1):
-            painter.drawLine(self.points[i], self.points[i+1])
-
-        painter.restore()
+            painter.drawPolyline(self.points)
+            painter.restore()
 
 
 class TextAnnotation(BaseAnnotation):
