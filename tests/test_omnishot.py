@@ -236,7 +236,34 @@ class TestOmniShot(unittest.TestCase):
         self.assertEqual(cfg.filename_template, "Test_%Y%m%d.png")
         self.assertEqual(cfg.shortcut_scrolling, "Meta+Shift+C")
         self.assertEqual(cfg.scroll_step_pixels, 140)
+        # Verify "Open in Dolphin" button is completely removed
+        self.assertFalse(hasattr(dlg, "btn_open_dolphin"), "Open in Dolphin button should be removed")
         dlg.close()
+
+    def test_11_main_window_resizability(self):
+        """Verify the main annotation window is fully resizable down to compact viewports."""
+        from omnishot.ui.main_window import OmniShotMainWindow
+        win = OmniShotMainWindow()
+        test_img = QImage(800, 600, QImage.Format.Format_RGB32)
+        test_img.fill(QColor(30, 30, 30))
+        win.set_captured_image(test_img)
+
+        # Minimum size should be compact
+        self.assertLessEqual(win.minimumWidth(), 500)
+        self.assertLessEqual(win.minimumHeight(), 400)
+
+        # Test resizing to compact dimensions
+        win.resize(600, 450)
+        self.app.processEvents()
+        self.assertEqual(win.width(), 600)
+        self.assertEqual(win.height(), 450)
+
+        # Test resizing to widescreen
+        win.resize(1600, 900)
+        self.app.processEvents()
+        self.assertEqual(win.width(), 1600)
+        self.assertEqual(win.height(), 900)
+        win.close()
 
 if __name__ == "__main__":
     unittest.main()

@@ -120,7 +120,7 @@ class RibbonGroup(QFrame):
         self.btn_layout.addWidget(widget)
 
 
-class PropertiesSidebar(QFrame):
+class PropertiesSidebar(QScrollArea):
     """Collapsible right-hand properties panel matching Mockup 2."""
     colorSelected = Signal(QColor)
     thicknessChanged = Signal(int)
@@ -142,8 +142,13 @@ class PropertiesSidebar(QFrame):
         super().__init__(parent)
         self.setObjectName("propertiesPanel")
         self.setFixedWidth(240)
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
-        layout = QVBoxLayout(self)
+        self.content_widget = QWidget(self)
+        layout = QVBoxLayout(self.content_widget)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
 
@@ -299,6 +304,7 @@ class PropertiesSidebar(QFrame):
         layout.addLayout(toggle_layout)
         layout.addStretch()
 
+        self.setWidget(self.content_widget)
         self.set_current_color(QColor("#ff0000"))
 
     def _on_swatch_clicked(self, hex_code: str):
@@ -339,6 +345,7 @@ class OmniShotMainWindow(QMainWindow):
             self.setWindowIcon(QIcon.fromTheme("omnishot", QIcon(str(icon_path))))
 
         self.resize(1180, 820)
+        self.setMinimumSize(480, 360)
         self.setStyleSheet(OMNISHOT_DARK_QSS)
 
         self._init_ui()
@@ -363,9 +370,17 @@ class OmniShotMainWindow(QMainWindow):
         self.scroll_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.scroll_area.setWidget(self.canvas)
 
-        # 2. Top Categorized Ribbon Bar
+        # 2. Top Categorized Ribbon Bar (scrollable horizontally so window can be freely resized to any width)
         self.ribbon_bar = self._create_ribbon_bar()
-        main_vbox.addWidget(self.ribbon_bar)
+        self.ribbon_scroll = QScrollArea(self)
+        self.ribbon_scroll.setObjectName("ribbonScrollArea")
+        self.ribbon_scroll.setWidgetResizable(True)
+        self.ribbon_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.ribbon_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.ribbon_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.ribbon_scroll.setFixedHeight(68)
+        self.ribbon_scroll.setWidget(self.ribbon_bar)
+        main_vbox.addWidget(self.ribbon_scroll)
 
         # 3. Main Workspace Split: Canvas Area (Left) + Properties Sidebar (Right)
         workspace = QWidget(self)
@@ -633,10 +648,10 @@ class OmniShotMainWindow(QMainWindow):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.action_pill.adjustSize()
-        pw = self.action_pill.width()
+        pw = min(self.action_pill.width(), max(100, self.viewport_container.width() - 20))
         ph = self.action_pill.height()
-        px = (self.viewport_container.width() - pw) // 2
-        py = self.viewport_container.height() - ph - 20
+        px = max(10, (self.viewport_container.width() - pw) // 2)
+        py = max(10, self.viewport_container.height() - ph - 20)
         self.action_pill.setGeometry(px, py, pw, ph)
         self.action_pill.raise_()
 

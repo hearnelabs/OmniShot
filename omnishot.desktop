@@ -26,14 +26,14 @@ Icon=omnishot
 [Desktop Action RectangularRegionScreenShot]
 Name=Capture Rectangular Region
 Exec=omnishot -r
-Icon=spectacle
+Icon=omnishot
 
 [Desktop Action ActiveWindowScreenShot]
 Name=Capture Active Window
 Exec=omnishot -a
-Icon=spectacle
+Icon=omnishot
 
 [Desktop Action FullScreenScreenShot]
 Name=Capture Entire Desktop
 Exec=omnishot -f
-Icon=spectacle
+Icon=omnishot

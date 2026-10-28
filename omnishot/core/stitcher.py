@@ -53,7 +53,45 @@ class ScrollingStitcher:
     def _load_native_library(self):
         so_path = Path(__file__).parent / "libomnishot_stitch.so"
         if not so_path.exists():
-            raise FileNotFoundError(f"Native stitcher library not found at: {so_path}")
+            # Attempt automatic on-the-fly compilation for seamless portability on fresh CachyOS installs
+            candidates = [
+                Path(__file__).parent / "stitcher.c",
+                Path(__file__).parent.parent.parent / "native" / "stitcher.c"
+            ]
+            c_source = None
+            for cand in candidates:
+                if cand.exists():
+                    c_source = cand
+                    break
+            
+            if c_source:
+                import subprocess
+                print(f"[OmniShot] Building native acceleration library from {c_source}...")
+                try:
+                    subprocess.run(
+                        ["gcc", "-O3", "-march=native", "-fPIC", "-shared", str(c_source), "-o", str(so_path), "-lm"],
+                        check=True,
+                        capture_output=True,
+                        text=True
+                    )
+                    print(f"[OmniShot] Successfully built {so_path}")
+                except Exception as build_err:
+                    # Fallback without -march=native if host architecture flags complain
+                    try:
+                        subprocess.run(
+                            ["gcc", "-O3", "-fPIC", "-shared", str(c_source), "-o", str(so_path), "-lm"],
+                            check=True,
+                            capture_output=True,
+                            text=True
+                        )
+                        print(f"[OmniShot] Successfully built {so_path} (standard flags)")
+                    except Exception:
+                        raise FileNotFoundError(
+                            f"Native stitcher library missing and auto-compilation failed: {build_err}. "
+                            "Please run 'gcc -O3 -fPIC -shared native/stitcher.c -o omnishot/core/libomnishot_stitch.so -lm'."
+                        )
+            else:
+                raise FileNotFoundError(f"Native stitcher library not found at: {so_path}")
 
         self._lib = ctypes.CDLL(str(so_path))
         self._lib.omnishot_find_vertical_offset.argtypes = [

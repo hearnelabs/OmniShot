@@ -185,11 +185,6 @@ class OmniShotSettingsDialog(QDialog):
         btn_browse.clicked.connect(self._browse_save_directory)
         row_dir.addWidget(btn_browse)
 
-        btn_open_dolphin = QPushButton("📂 Open in Dolphin", self)
-        btn_open_dolphin.setStyleSheet("padding: 6px 14px; background-color: #262b35; border: 1px solid #3e444c; border-radius: 5px;")
-        btn_open_dolphin.clicked.connect(self._open_in_dolphin)
-        row_dir.addWidget(btn_open_dolphin)
-
         dir_layout.addLayout(row_dir)
         layout.addWidget(grp_dir)
 
@@ -453,14 +448,6 @@ class OmniShotSettingsDialog(QDialog):
         selected_dir = QFileDialog.getExistingDirectory(self, "Select Screenshots Save Directory", curr)
         if selected_dir:
             self.txt_save_dir.setText(selected_dir)
-
-    def _open_in_dolphin(self):
-        path = self.txt_save_dir.text().strip()
-        if not path:
-            path = str(Path.home() / "Pictures" / "Screenshots")
-        p = Path(path)
-        p.mkdir(parents=True, exist_ok=True)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(p)))
 
     def _reset_shortcuts_to_defaults(self):
         self.key_launch.setKeySequence(QKeySequence("Meta+Shift+S"))

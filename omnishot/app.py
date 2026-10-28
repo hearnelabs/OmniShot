@@ -156,7 +156,10 @@ class OmniShotApp(QObject):
 
         # Pre-open uinput scroller if needed
         if is_auto:
-            self.uinput_scroller.open()
+            if not self.uinput_scroller.open():
+                print("[OmniShot] Notice: /dev/uinput not accessible. Falling back to interactive manual scroll mode.")
+                is_auto = False
+                self._is_auto_scroll = False
 
         # Capture initial frame of the region
         initial_frame = self.capture_backend.capture_area(rect.x(), rect.y(), rect.width(), rect.height())
