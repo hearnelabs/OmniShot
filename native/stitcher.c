@@ -1,6 +1,7 @@
 /*
  * OmniShot - High Performance Image Stitching Engine
  * Tailored for Wayland / KDE Plasma 6 scrolling capture
+ * Includes multi-zone correlation, floating widget rejection, and static margin detection.
  */
 
 #include <stdint.h>
@@ -16,7 +17,7 @@ typedef struct {
     int is_identical;      // 1 if frames are identical (0 movement)
 } StitchResult;
 
-// Fast inline RGB pixel difference
+// Fast inline RGB pixel difference (Manhattan distance in RGB space)
 static inline int pixel_diff(uint32_t c1, uint32_t c2) {
     int r = ((c1 >> 16) & 0xFF) - ((c2 >> 16) & 0xFF);
     int g = ((c1 >> 8) & 0xFF) - ((c2 >> 8) & 0xFF);
@@ -37,6 +38,110 @@ static double compute_strip_variance(const uint32_t* frame, int width, int y_sta
         }
     }
     return count > 0 ? (double)diff_sum / count : 0.0;
+}
+
+/*
+ * Automatically detects static header height and static footer height
+ * between two frames by scanning rows with zero or near-zero variance.
+ */
+void omnishot_detect_static_margins(
+    const uint32_t* frame_a,
+    const uint32_t* frame_b,
+    int width,
+    int height,
+    int margin_x_left,
+    int margin_x_right,
+    int* out_header_h,
+    int* out_footer_h
+) {
+    if (!frame_a || !frame_b || width <= 0 || height <= 0) {
+        if (out_header_h) *out_header_h = 0;
+        if (out_footer_h) *out_footer_h = 0;
+        return;
+    }
+
+    int left = margin_x_left > 0 ? margin_x_left : 10;
+    int right = width - (margin_x_right > 0 ? margin_x_right : 24);
+    if (right <= left) {
+        left = 0;
+        right = width;
+    }
+
+    // 1. Detect static header from top down
+    int header_limit = height / 3;
+    int header_h = 0;
+    for (int y = 0; y < header_limit; y++) {
+        const uint32_t* ra = &frame_a[y * width];
+        const uint32_t* rb = &frame_b[y * width];
+        int64_t diff = 0;
+        int count = 0;
+        for (int x = left; x < right; x += 4) {
+            diff += pixel_diff(ra[x], rb[x]);
+            count++;
+        }
+        double avg = count > 0 ? (double)diff / count : 0.0;
+        if (avg < 1.5) {
+            header_h = y + 1;
+        } else {
+            // Check if next 2 rows are also non-static before concluding
+            int is_noisy = 0;
+            for (int ny = y + 1; ny < y + 3 && ny < header_limit; ny++) {
+                const uint32_t* n_ra = &frame_a[ny * width];
+                const uint32_t* n_rb = &frame_b[ny * width];
+                int64_t n_diff = 0;
+                int n_count = 0;
+                for (int x = left; x < right; x += 4) {
+                    n_diff += pixel_diff(n_ra[x], n_rb[x]);
+                    n_count++;
+                }
+                if (n_count > 0 && ((double)n_diff / n_count) < 1.5) {
+                    is_noisy = 1;
+                    break;
+                }
+            }
+            if (!is_noisy) {
+                break;
+            }
+        }
+    }
+
+    // 2. Detect static footer / bottom bar / floating buttons from bottom up
+    int footer_limit = height / 2;
+    int footer_h = 0;
+    for (int y = height - 1; y >= height - footer_limit; y--) {
+        const uint32_t* ra = &frame_a[y * width];
+        const uint32_t* rb = &frame_b[y * width];
+        int64_t diff = 0;
+        int count = 0;
+        for (int x = left; x < right; x += 4) {
+            diff += pixel_diff(ra[x], rb[x]);
+            count++;
+        }
+        double avg = count > 0 ? (double)diff / count : 0.0;
+        if (avg < 1.5) {
+            footer_h = height - y;
+        } else {
+            // Check center cluster (floating action button at center-bottom)
+            int cx_start = width / 3;
+            int cx_end = (2 * width) / 3;
+            int64_t c_diff = 0;
+            int c_count = 0;
+            for (int x = cx_start; x < cx_end; x += 2) {
+                c_diff += pixel_diff(ra[x], rb[x]);
+                c_count++;
+            }
+            double c_avg = c_count > 0 ? (double)c_diff / c_count : 0.0;
+            if (c_avg < 1.5) {
+                // Center cluster is static while sides move -> floating button
+                footer_h = height - y;
+            } else {
+                break;
+            }
+        }
+    }
+
+    if (out_header_h) *out_header_h = header_h;
+    if (out_footer_h) *out_footer_h = footer_h;
 }
 
 /*
@@ -82,6 +187,9 @@ int check_identical(
  *
  * When the user scrolls DOWN, the content moves UP.
  * Therefore, row (y) in curr_frame corresponds to row (y + d) in prev_frame.
+ *
+ * Employs horizontal sub-zone correlation (Left, Right) to completely ignore
+ * centered or right-aligned floating buttons and scrollbars.
  */
 int omnishot_find_vertical_offset(
     const uint32_t* prev_frame,
@@ -126,16 +234,15 @@ int omnishot_find_vertical_offset(
         return 0;
     }
 
-    // We select feature-rich sample strips from curr_frame to correlate against prev_frame
-    int strip_h = 28;
+    int strip_h = 24;
     if (strip_h > (height / 6)) strip_h = (height / 6);
     if (strip_h < 10) strip_h = 10;
 
-    // Test 3 candidate strip positions: near top, upper-middle, and center
+    // Pick 3 candidate positions well inside the safe scrollable body
     int candidate_ys[3];
-    candidate_ys[0] = margin_y_top + 10;
-    candidate_ys[1] = (int)(height * 0.25);
-    candidate_ys[2] = (int)(height * 0.45);
+    candidate_ys[0] = margin_y_top + 15;
+    candidate_ys[1] = (int)(height * 0.22);
+    candidate_ys[2] = (int)(height * 0.40);
 
     int best_sample_y = candidate_ys[1];
     double max_var = -1.0;
@@ -153,6 +260,13 @@ int omnishot_find_vertical_offset(
 
     int curr_y_start = best_sample_y;
 
+    // Horizontal thirds to isolate floating buttons
+    int third_w = eff_width / 3;
+    int x_left_start = margin_x_left;
+    int x_left_end = x_left_start + third_w;
+    int x_right_start = width - margin_x_right - third_w;
+    int x_right_end = width - margin_x_right;
+
     double best_diff = 1e9;
     int best_d = -1;
 
@@ -162,41 +276,54 @@ int omnishot_find_vertical_offset(
             break; // Exceeded bounds
         }
 
-        int64_t total_diff = 0;
-        int count = 0;
+        int64_t diff_left = 0, diff_right = 0;
+        int count_left = 0, count_right = 0;
 
-        // Sample strip match - compare every scanline to prevent aliasing
         for (int sy = 0; sy < strip_h; sy++) {
             const uint32_t* r_curr = &curr_frame[(curr_y_start + sy) * width];
             const uint32_t* r_prev = &prev_frame[(prev_y_start + sy) * width];
 
-            for (int x = margin_x_left; x < width - margin_x_right; x += 2) {
-                total_diff += pixel_diff(r_curr[x], r_prev[x]);
-                count++;
+            // Left third
+            for (int x = x_left_start; x < x_left_end; x += 2) {
+                diff_left += pixel_diff(r_curr[x], r_prev[x]);
+                count_left++;
+            }
+            // Right third
+            for (int x = x_right_start; x < x_right_end; x += 2) {
+                diff_right += pixel_diff(r_curr[x], r_prev[x]);
+                count_right++;
             }
         }
 
-        if (count == 0) continue;
-        double avg = (double)total_diff / count;
+        double avg_l = count_left > 0 ? (double)diff_left / count_left : 1e9;
+        double avg_r = count_right > 0 ? (double)diff_right / count_right : 1e9;
 
-        int strip2_h = 24;
-        int curr_y2_start = curr_y_start + strip_h + 30;
-        double avg_combined = avg;
+        // Use minimum of left and right to reject floating elements that sit on one side/center
+        double avg_zone = fmin(avg_l, avg_r);
+        if (avg_l < 10.0 && avg_r < 10.0) {
+            avg_zone = (avg_l + avg_r) * 0.5;
+        }
+
+        // Secondary confirmation strip to prevent periodic repetition errors
+        int strip2_h = 20;
+        int curr_y2_start = curr_y_start + strip_h + 24;
+        double avg_combined = avg_zone;
+
         if (curr_y2_start + strip2_h + d < height - margin_y_bottom) {
             int prev_y2_start = curr_y2_start + d;
-            int64_t total_diff2 = 0;
-            int count2 = 0;
+            int64_t diff2_l = 0;
+            int count2_l = 0;
             for (int sy = 0; sy < strip2_h; sy++) {
                 const uint32_t* r2_curr = &curr_frame[(curr_y2_start + sy) * width];
                 const uint32_t* r2_prev = &prev_frame[(prev_y2_start + sy) * width];
-                for (int x = margin_x_left; x < width - margin_x_right; x += 2) {
-                    total_diff2 += pixel_diff(r2_curr[x], r2_prev[x]);
-                    count2++;
+                for (int x = x_left_start; x < x_left_end; x += 2) {
+                    diff2_l += pixel_diff(r2_curr[x], r2_prev[x]);
+                    count2_l++;
                 }
             }
-            if (count2 > 0) {
-                double avg2 = (double)total_diff2 / count2;
-                avg_combined = (avg * 0.5) + (avg2 * 0.5);
+            if (count2_l > 0) {
+                double avg2 = (double)diff2_l / count2_l;
+                avg_combined = (avg_zone * 0.6) + (avg2 * 0.4);
             }
         }
 

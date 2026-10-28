@@ -1,7 +1,7 @@
 """
 OmniShot Python Stitching Controller
 Manages frame capture buffers, translation detection via libomnishot_stitch.so,
-and seamless vertical stitching.
+multi-zone correlation, floating widget rejection, and seamless vertical stitching.
 """
 
 import os
@@ -40,8 +40,11 @@ class ScrollingStitcher:
         self._lib = None
         self._load_native_library()
 
-        self._stitched: Optional[QImage] = None
+        self._initial_frame: Optional[QImage] = None
+        self._body_canvas: Optional[QImage] = None
+        self._last_frame: Optional[QImage] = None
         self._prev_frame: Optional[QImage] = None
+        self._margins_detected: bool = False
         self._frame_count: int = 0
         self._identical_count: int = 0
         # Require at least 25 consecutive identical frames before considering end-of-scroll
@@ -61,10 +64,20 @@ class ScrollingStitcher:
         ]
         self._lib.omnishot_find_vertical_offset.restype = ctypes.c_int
 
+        self._lib.omnishot_detect_static_margins.argtypes = [
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
+            ctypes.c_int, ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)
+        ]
+        self._lib.omnishot_detect_static_margins.restype = None
+
     def reset(self):
         """Clears current stitch buffer."""
-        self._stitched = None
+        self._initial_frame = None
+        self._body_canvas = None
+        self._last_frame = None
         self._prev_frame = None
+        self._margins_detected = False
         self._frame_count = 0
         self._identical_count = 0
 
@@ -72,15 +85,17 @@ class ScrollingStitcher:
         """Initializes stitching session with the first captured frame."""
         self.reset()
         if initial_frame.format() not in (QImage.Format.Format_RGBX8888, QImage.Format.Format_RGBA8888, QImage.Format.Format_ARGB32):
-            self._stitched = initial_frame.convertToFormat(QImage.Format.Format_RGBX8888)
+            converted = initial_frame.convertToFormat(QImage.Format.Format_RGBX8888)
         else:
-            self._stitched = initial_frame.copy()
+            converted = initial_frame.copy()
         
-        self._prev_frame = self._stitched.copy()
+        self._initial_frame = converted
+        self._prev_frame = converted.copy()
+        self._last_frame = converted.copy()
         self._frame_count = 1
 
     def is_active(self) -> bool:
-        return self._stitched is not None
+        return self._initial_frame is not None
 
     @property
     def frame_count(self) -> int:
@@ -88,11 +103,12 @@ class ScrollingStitcher:
 
     @property
     def current_height(self) -> int:
-        return self._stitched.height() if self._stitched else 0
+        img = self.get_stitched_image()
+        return img.height() if img else 0
 
     @property
     def current_width(self) -> int:
-        return self._stitched.width() if self._stitched else 0
+        return self._initial_frame.width() if self._initial_frame else 0
 
     def add_frame(self, new_frame: QImage) -> Tuple[bool, int, str]:
         """
@@ -102,7 +118,7 @@ class ScrollingStitcher:
           - success=True, offset_y == 0: page stationary
           - success=False: failed to find reliable match
         """
-        if self._stitched is None or self._prev_frame is None:
+        if self._initial_frame is None or self._prev_frame is None:
             self.start(new_frame)
             return True, 0, "Started"
 
@@ -144,30 +160,79 @@ class ScrollingStitcher:
         self._identical_count = 0
 
         if d > 0:
-            # Stitch the new d rows to the bottom of the composite canvas
-            old_h = self._stitched.height()
-            new_h = old_h + d
-            
-            new_canvas = QImage(w, new_h, QImage.Format.Format_RGBX8888)
+            # On first displacement, detect static margins (header and footer/floating buttons)
+            if not self._margins_detected:
+                c_hdr = ctypes.c_int(0)
+                c_ftr = ctypes.c_int(0)
+                self._lib.omnishot_detect_static_margins(
+                    ptr_prev, ptr_curr, w, h,
+                    self.margin_x_left, self.margin_x_right,
+                    ctypes.byref(c_hdr), ctypes.byref(c_ftr)
+                )
+                if self.margin_y_top == 0 and c_hdr.value > 0:
+                    self.margin_y_top = c_hdr.value
+                if self.margin_y_bottom == 0 and c_ftr.value > 0:
+                    self.margin_y_bottom = c_ftr.value
+
+                # If full-height capture, ensure footer margin is at least 80px so floating buttons/chat input are never duplicated
+                if self.margin_y_bottom == 0 and h >= 500:
+                    self.margin_y_bottom = 85
+
+                if self.margin_y_bottom >= h - 100:
+                    self.margin_y_bottom = 0
+                if self.margin_y_top >= h / 3:
+                    self.margin_y_top = 0
+
+                self._margins_detected = True
+
+                # Initialize body canvas with initial frame up to (h - margin_y_bottom)
+                cut_bottom = h - self.margin_y_bottom
+                self._body_canvas = self._initial_frame.copy(0, 0, w, cut_bottom)
+
+            cut_bottom = h - self.margin_y_bottom
+            # Newly revealed content slice: from row (cut_bottom - d) to cut_bottom
+            # This row range is strictly ABOVE any floating buttons or footer!
+            new_slice = frame.copy(0, cut_bottom - d, w, d)
+
+            old_h = self._body_canvas.height()
+            new_canvas = QImage(w, old_h + d, QImage.Format.Format_RGBX8888)
             painter = QPainter(new_canvas)
-            painter.drawImage(0, 0, self._stitched)
-            # Slice the bottom d rows from new_frame: from row (h - d) to h
-            new_slice = frame.copy(0, h - d, w, d)
+            painter.drawImage(0, 0, self._body_canvas)
             painter.drawImage(0, old_h, new_slice)
             painter.end()
 
-            self._stitched = new_canvas
+            self._body_canvas = new_canvas
             self._prev_frame = frame.copy()
+            self._last_frame = frame.copy()
             self._frame_count += 1
             return True, d, f"Stitched +{d}px (confidence: {result.confidence:.2f})"
 
         return False, -1, f"No overlap match found (mean diff: {result.mean_diff:.1f})"
 
     def get_stitched_image(self) -> Optional[QImage]:
-        return self._stitched
+        """Returns the fully composed composite image, seamlessly attaching the final footer."""
+        if not self._initial_frame:
+            return None
+
+        if self._body_canvas is None:
+            return self._initial_frame
+
+        if self.margin_y_bottom > 0 and self._last_frame:
+            cut_bottom = self._last_frame.height() - self.margin_y_bottom
+            footer_slice = self._last_frame.copy(0, cut_bottom, self._last_frame.width(), self.margin_y_bottom)
+
+            final_img = QImage(self._body_canvas.width(), self._body_canvas.height() + self.margin_y_bottom, QImage.Format.Format_RGBX8888)
+            painter = QPainter(final_img)
+            painter.drawImage(0, 0, self._body_canvas)
+            painter.drawImage(0, self._body_canvas.height(), footer_slice)
+            painter.end()
+            return final_img
+
+        return self._body_canvas
 
     def get_preview_thumbnail(self, max_height: int = 240) -> Optional[QImage]:
         """Returns a scaled thumbnail for the live HUD."""
-        if not self._stitched or self._stitched.height() <= 0:
+        img = self.get_stitched_image()
+        if not img or img.height() <= 0:
             return None
-        return self._stitched.scaledToHeight(max_height, Qt.TransformationMode.SmoothTransformation)
+        return img.scaledToHeight(max_height, Qt.TransformationMode.SmoothTransformation)

@@ -57,41 +57,7 @@ class KWinCaptureBackend:
             return None
 
     def capture_workspace(self, include_cursor: bool = False) -> Optional[QImage]:
-        """Captures entire Wayland desktop / all monitors."""
-        if not self._iface:
-            self._init_dbus()
-            if not self._iface:
-                return None
-
-        r_fd, w_fd = os.pipe()
-        try:
-            unix_fd = dbus.types.UnixFd(w_fd)
-            options = dbus.Dictionary({"include-cursor": dbus.Boolean(include_cursor)}, signature="sv")
-            res = self._iface.CaptureWorkspace(options, unix_fd)
-            os.close(w_fd)
-            return self._read_image_from_pipe(r_fd, res)
-        finally:
-            os.close(r_fd)
-
-    def capture_screen(self, screen_name: str = "", include_cursor: bool = False) -> Optional[QImage]:
-        """Captures current or specified screen/monitor."""
-        if not self._iface:
-            self._init_dbus()
-            if not self._iface:
-                return None
-
-        r_fd, w_fd = os.pipe()
-        try:
-            unix_fd = dbus.types.UnixFd(w_fd)
-            options = dbus.Dictionary({"include-cursor": dbus.Boolean(include_cursor)}, signature="sv")
-            res = self._iface.CaptureScreen(screen_name, options, unix_fd)
-            os.close(w_fd)
-            return self._read_image_from_pipe(r_fd, res)
-        finally:
-            os.close(r_fd)
-
-    def capture_active_window(self, include_cursor: bool = False) -> Optional[QImage]:
-        """Captures the currently active window."""
+        """Captures entire Wayland desktop / all monitors at native hardware resolution."""
         if not self._iface:
             self._init_dbus()
             if not self._iface:
@@ -102,7 +68,57 @@ class KWinCaptureBackend:
             unix_fd = dbus.types.UnixFd(w_fd)
             options = dbus.Dictionary({
                 "include-cursor": dbus.Boolean(include_cursor),
-                "include-decoration": dbus.Boolean(True)
+                "native-resolution": dbus.Boolean(True)
+            }, signature="sv")
+            res = self._iface.CaptureWorkspace(options, unix_fd)
+            os.close(w_fd)
+            return self._read_image_from_pipe(r_fd, res)
+        finally:
+            os.close(r_fd)
+
+    def capture_screen(self, screen_name: str = "", include_cursor: bool = False) -> Optional[QImage]:
+        """Captures current or specified screen/monitor at native resolution."""
+        if not self._iface:
+            self._init_dbus()
+            if not self._iface:
+                return None
+
+        # Fallback to CaptureWorkspace if screen name is not given or invalid
+        if not screen_name:
+            screen_name = "eDP-1"
+
+        r_fd, w_fd = os.pipe()
+        try:
+            unix_fd = dbus.types.UnixFd(w_fd)
+            options = dbus.Dictionary({
+                "include-cursor": dbus.Boolean(include_cursor),
+                "native-resolution": dbus.Boolean(True)
+            }, signature="sv")
+            try:
+                res = self._iface.CaptureScreen(screen_name, options, unix_fd)
+            except Exception:
+                # Fallback to workspace capture
+                return self.capture_workspace(include_cursor=include_cursor)
+            os.close(w_fd)
+            return self._read_image_from_pipe(r_fd, res)
+        finally:
+            os.close(r_fd)
+
+    def capture_active_window(self, include_cursor: bool = False) -> Optional[QImage]:
+        """Captures the currently active window with native resolution and decorations."""
+        if not self._iface:
+            self._init_dbus()
+            if not self._iface:
+                return None
+
+        r_fd, w_fd = os.pipe()
+        try:
+            unix_fd = dbus.types.UnixFd(w_fd)
+            options = dbus.Dictionary({
+                "include-cursor": dbus.Boolean(include_cursor),
+                "include-decoration": dbus.Boolean(True),
+                "include-shadow": dbus.Boolean(True),
+                "native-resolution": dbus.Boolean(True)
             }, signature="sv")
             res = self._iface.CaptureActiveWindow(options, unix_fd)
             os.close(w_fd)
@@ -111,7 +127,7 @@ class KWinCaptureBackend:
             os.close(r_fd)
 
     def capture_area(self, x: int, y: int, width: int, height: int, include_cursor: bool = False) -> Optional[QImage]:
-        """Captures a specific rectangular region in logical coordinates."""
+        """Captures a specific rectangular region in logical coordinates at native resolution."""
         if not self._iface:
             self._init_dbus()
             if not self._iface:
@@ -123,7 +139,10 @@ class KWinCaptureBackend:
         r_fd, w_fd = os.pipe()
         try:
             unix_fd = dbus.types.UnixFd(w_fd)
-            options = dbus.Dictionary({"include-cursor": dbus.Boolean(include_cursor)}, signature="sv")
+            options = dbus.Dictionary({
+                "include-cursor": dbus.Boolean(include_cursor),
+                "native-resolution": dbus.Boolean(True)
+            }, signature="sv")
             res = self._iface.CaptureArea(int(x), int(y), int(width), int(height), options, unix_fd)
             os.close(w_fd)
             return self._read_image_from_pipe(r_fd, res)

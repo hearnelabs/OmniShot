@@ -84,11 +84,11 @@ class TestOmniShot(unittest.TestCase):
 
     def test_04_kwin_capture_backend(self):
         backend = KWinCaptureBackend()
-        # Test capturing small 50x50 area
+        # Test capturing small 50x50 area at native physical resolution (1.25x scale -> 63x63 px)
         img = backend.capture_area(0, 0, 50, 50)
         self.assertIsNotNone(img, "KWin ScreenShot2 should capture area successfully")
-        self.assertEqual(img.width(), 50)
-        self.assertEqual(img.height(), 50)
+        self.assertGreaterEqual(img.width(), 50, "Captured image must preserve full native physical pixels")
+        self.assertGreaterEqual(img.height(), 50, "Captured image must preserve full native physical pixels")
 
     def test_05_ocr_engine_available(self):
         self.assertTrue(OCREngine.is_available(), "Tesseract OCR engine should be installed on CachyOS")
@@ -99,12 +99,13 @@ class TestOmniShot(unittest.TestCase):
         self.assertTrue(args.scroll)
         self.assertEqual(args.delay, 500)
 
-    def test_07_sharex_vector_annotations(self):
+    def test_07_sharex_vector_annotations_and_tools(self):
         from PySide6.QtWidgets import QApplication
         from PySide6.QtCore import QRectF, QPointF
         from omnishot.ui.canvas import (
-            AnnotationCanvas, RectAnnotation, ArrowAnnotation,
-            TextAnnotation, SpeechBalloonAnnotation, StepBadgeAnnotation
+            AnnotationCanvas, ToolType, RectAnnotation, ArrowAnnotation,
+            LineAnnotation, TextAnnotation, SpeechBalloonAnnotation,
+            StepBadgeAnnotation, CropAnnotation
         )
         app = QApplication.instance() or QApplication(["test", "-platform", "offscreen"])
         canvas = AnnotationCanvas()
@@ -112,14 +113,24 @@ class TestOmniShot(unittest.TestCase):
         img.fill(QColor(40, 40, 40))
         canvas.set_image(img)
 
+        # Test tool activation
+        canvas.set_active_tool(ToolType.RECTANGLE)
+        self.assertEqual(canvas.current_tool, ToolType.RECTANGLE)
+
+        canvas.set_active_tool(ToolType.ARROW)
+        self.assertEqual(canvas.current_tool, ToolType.ARROW)
+
         # Add ShareX vector items
         r = RectAnnotation(is_rounded=True)
         r.rect = QRectF(10, 10, 50, 40)
+        self.assertTrue(r.hit_test(QPointF(25, 25)))
+        self.assertFalse(r.hit_test(QPointF(100, 100)))
         canvas.annotations.append(r)
 
         a = ArrowAnnotation()
         a.p1 = QPointF(80, 20)
         a.p2 = QPointF(150, 60)
+        self.assertTrue(a.hit_test(QPointF(115, 40)))
         canvas.annotations.append(a)
 
         t = TextAnnotation("ShareX Text")
@@ -128,6 +139,7 @@ class TestOmniShot(unittest.TestCase):
 
         s = StepBadgeAnnotation(1)
         s.rect = QRectF(180, 80, 30, 30)
+        self.assertTrue(s.hit_test(s.rect.center()))
         canvas.annotations.append(s)
 
         sb = SpeechBalloonAnnotation("Bubble")
@@ -138,6 +150,14 @@ class TestOmniShot(unittest.TestCase):
         self.assertIsNotNone(comp)
         self.assertEqual(comp.width(), 300)
         self.assertEqual(comp.height(), 200)
+
+        # Test cropping
+        crop = CropAnnotation()
+        crop.rect = QRectF(10, 10, 100, 100)
+        canvas._creating_annotation = crop
+        canvas.apply_crop()
+        self.assertEqual(canvas.get_image().width(), 100)
+        self.assertEqual(canvas.get_image().height(), 100)
 
     def test_08_spectacle_launch_overlay(self):
         from omnishot.ui.launch_overlay import SpectacleLaunchOverlay

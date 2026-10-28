@@ -44,6 +44,15 @@ HANDLE_BOTTOM = 6
 HANDLE_LEFT = 7
 HANDLE_SIZE = 8
 
+def point_to_segment_distance(p: QPointF, a: QPointF, b: QPointF) -> float:
+    ab = b - a
+    l2 = ab.x() * ab.x() + ab.y() * ab.y()
+    if l2 == 0.0:
+        return math.hypot(p.x() - a.x(), p.y() - a.y())
+    t = max(0.0, min(1.0, ((p.x() - a.x()) * ab.x() + (p.y() - a.y()) * ab.y()) / l2))
+    proj = a + ab * t
+    return math.hypot(p.x() - proj.x(), p.y() - proj.y())
+
 class BaseAnnotation:
     def __init__(self):
         self.tool_type: str = ToolType.RECTANGLE
@@ -231,6 +240,10 @@ class LineAnnotation(BaseAnnotation):
         elif handle_id == HANDLE_BR:
             self.p2 = new_pt
 
+    def hit_test(self, pt: QPointF) -> bool:
+        margin = max(8.0, float(self.stroke_width) * 1.5)
+        return point_to_segment_distance(pt, self.p1, self.p2) <= margin
+
     def draw(self, painter: QPainter, base_image: Optional[QImage] = None):
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -274,6 +287,10 @@ class ArrowAnnotation(BaseAnnotation):
             self.p1 = new_pt
         elif handle_id == HANDLE_BR:
             self.p2 = new_pt
+
+    def hit_test(self, pt: QPointF) -> bool:
+        margin = max(8.0, float(self.stroke_width) * 1.5)
+        return point_to_segment_distance(pt, self.p1, self.p2) <= margin
 
     def draw(self, painter: QPainter, base_image: Optional[QImage] = None):
         dx = self.p2.x() - self.p1.x()
@@ -336,6 +353,15 @@ class FreehandAnnotation(BaseAnnotation):
         for i in range(len(self.points)):
             self.points[i] += QPointF(dx, dy)
         self.rect.translate(dx, dy)
+
+    def hit_test(self, pt: QPointF) -> bool:
+        if len(self.points) < 2:
+            return False
+        margin = max(8.0, float(self.stroke_width) * 1.5)
+        for i in range(len(self.points) - 1):
+            if point_to_segment_distance(pt, self.points[i], self.points[i+1]) <= margin:
+                return True
+        return False
 
     def draw(self, painter: QPainter, base_image: Optional[QImage] = None):
         if len(self.points) < 2:
@@ -487,6 +513,10 @@ class StepBadgeAnnotation(BaseAnnotation):
         c = self.rect.center()
         return QRectF(c.x() - self.radius, c.y() - self.radius, self.radius * 2, self.radius * 2)
 
+    def hit_test(self, pt: QPointF) -> bool:
+        c = self.rect.center()
+        return math.hypot(pt.x() - c.x(), pt.y() - c.y()) <= (self.radius + 6.0)
+
     def draw(self, painter: QPainter, base_image: Optional[QImage] = None):
         c = self.rect.center()
         painter.save()
@@ -585,6 +615,64 @@ class MagnifyAnnotation(BaseAnnotation):
         painter.setPen(QPen(self.stroke_qcolor, self.stroke_width))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(r)
+        painter.restore()
+
+
+class CropAnnotation(BaseAnnotation):
+    def __init__(self):
+        super().__init__()
+        self.tool_type = ToolType.CROP
+        self.stroke_color = QColor("#3daee9")
+        self.stroke_width = 2
+        self.has_shadow = False
+
+    def draw(self, painter: QPainter, base_image: Optional[QImage] = None):
+        r = self.normalized_rect()
+        if r.width() < 2 or r.height() < 2:
+            return
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        # Dim areas outside crop rect
+        if base_image and not base_image.isNull():
+            dim = QColor(0, 0, 0, 140)
+            img_w = float(base_image.width())
+            img_h = float(base_image.height())
+            painter.fillRect(QRectF(0, 0, img_w, r.top()), dim)
+            painter.fillRect(QRectF(0, r.bottom(), img_w, img_h - r.bottom()), dim)
+            painter.fillRect(QRectF(0, r.top(), r.left(), r.height()), dim)
+            painter.fillRect(QRectF(r.right(), r.top(), img_w - r.right(), r.height()), dim)
+
+        # Dashed crop border
+        pen = QPen(QColor("#3daee9"), 2, Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(r)
+
+        # 8 Resize handles
+        painter.setPen(QPen(QColor("#3daee9"), 1.5))
+        painter.setBrush(QBrush(QColor(255, 255, 255)))
+        for pt in self.get_handles().values():
+            painter.drawRect(QRectF(pt.x() - 4, pt.y() - 4, 8, 8))
+
+        # Dimension pill badge
+        dim_text = f"Crop: {int(r.width())} × {int(r.height())} px  |  Enter: Apply  •  Esc: Cancel"
+        painter.setFont(QFont("Noto Sans", 11, QFont.Weight.Bold))
+        metrics = painter.fontMetrics()
+        bw = metrics.horizontalAdvance(dim_text) + 18
+        bh = metrics.height() + 8
+        bx = r.left() + 6
+        by = r.top() - bh - 6
+        if by < 10:
+            by = r.top() + 6
+        badge_rect = QRectF(bx, by, bw, bh)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor(20, 24, 30, 230)))
+        painter.drawRoundedRect(badge_rect, 5, 5)
+        painter.setPen(QColor("#ffffff"))
+        painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, dim_text)
+
         painter.restore()
 
 
@@ -732,6 +820,98 @@ class AnnotationCanvas(QWidget):
             return pt
         return QPointF(pt.x() / self._zoom, pt.y() / self._zoom)
 
+    def set_active_tool(self, tool_type: str):
+        """Sets the active ShareX annotation tool and updates canvas state/cursor."""
+        self.current_tool = tool_type
+
+        # If switching away from pointer, deselect currently selected annotation
+        if tool_type != ToolType.POINTER and self.selected_annotation:
+            self.selected_annotation.is_selected = False
+            self.selected_annotation = None
+            self.selectionChanged.emit(None)
+
+        # Update cursor according to tool
+        if tool_type == ToolType.POINTER:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+        elif tool_type == ToolType.TEXT:
+            self.setCursor(Qt.CursorShape.IBeamCursor)
+        elif tool_type in (ToolType.PEN, ToolType.HIGHLIGHTER, ToolType.LINE, ToolType.ARROW):
+            self.setCursor(Qt.CursorShape.CrossCursor)
+        elif tool_type == ToolType.CROP:
+            self.setCursor(Qt.CursorShape.CrossCursor)
+        else:
+            self.setCursor(Qt.CursorShape.CrossCursor)
+        self.update()
+
+    def apply_crop(self):
+        """Applies crop rectangle to base image and shifts annotations."""
+        crop_ann = None
+        if self._creating_annotation and self._creating_annotation.tool_type == ToolType.CROP:
+            crop_ann = self._creating_annotation
+        elif self.selected_annotation and self.selected_annotation.tool_type == ToolType.CROP:
+            crop_ann = self.selected_annotation
+        
+        if not crop_ann or not self._base_image or self._base_image.isNull():
+            return
+
+        r = crop_ann.normalized_rect().toRect()
+        cr = r.intersected(self._base_image.rect())
+        if cr.width() < 10 or cr.height() < 10:
+            return
+
+        self._push_history()
+        self._base_image = self._base_image.copy(cr)
+        dx = -float(cr.left())
+        dy = -float(cr.top())
+        remaining = []
+        for ann in self.annotations:
+            if ann == crop_ann:
+                continue
+            ann.move_by(dx, dy)
+            if ann.normalized_rect().intersects(QRectF(0, 0, cr.width(), cr.height())):
+                remaining.append(ann)
+        self.annotations = remaining
+        self._creating_annotation = None
+        self.selected_annotation = None
+        self.set_active_tool(ToolType.POINTER)
+        self._update_canvas_size()
+        self.update()
+        self.imageChanged.emit()
+        self.selectionChanged.emit(None)
+
+    def cancel_crop(self):
+        """Cancels active crop selection."""
+        if self._creating_annotation and self._creating_annotation.tool_type == ToolType.CROP:
+            self._creating_annotation = None
+            self.set_active_tool(ToolType.POINTER)
+            self.update()
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent):
+        """Double click to apply crop or edit text/balloon annotations."""
+        if self._creating_annotation and self._creating_annotation.tool_type == ToolType.CROP:
+            self.apply_crop()
+            return
+
+        img_pos = self._to_image_coords(event.position())
+        for ann in reversed(self.annotations):
+            if ann.hit_test(img_pos):
+                if isinstance(ann, TextAnnotation):
+                    text, ok = QInputDialog.getText(self, "Edit Text", "Text:", text=ann.text)
+                    if ok and text:
+                        self._push_history()
+                        ann.text = text
+                        self.update()
+                        self.imageChanged.emit()
+                    return
+                elif isinstance(ann, SpeechBalloonAnnotation):
+                    text, ok = QInputDialog.getText(self, "Edit Balloon", "Comment:", text=ann.text)
+                    if ok and text:
+                        self._push_history()
+                        ann.text = text
+                        self.update()
+                        self.imageChanged.emit()
+                    return
+
     def mousePressEvent(self, event: QMouseEvent):
         if not self._base_image:
             return
@@ -746,6 +926,18 @@ class AnnotationCanvas(QWidget):
             return
 
         if event.button() == Qt.MouseButton.LeftButton:
+            # Check if interacting with active crop box handles
+            if self._creating_annotation and self._creating_annotation.tool_type == ToolType.CROP:
+                handle = self._creating_annotation.get_handle_at(img_pos)
+                if handle != HANDLE_NONE:
+                    self._active_handle = handle
+                    self._dragging = True
+                    return
+                elif self._creating_annotation.normalized_rect().contains(img_pos):
+                    return
+                else:
+                    self.cancel_crop()
+
             # 1. Pointer Mode: Select or grab handle of an existing annotation
             if self.current_tool == ToolType.POINTER:
                 if self.selected_annotation:
@@ -857,6 +1049,9 @@ class AnnotationCanvas(QWidget):
             ann = MagnifyAnnotation()
             ann.rect = QRectF(pos, pos)
             ann.stroke_color = self.current_stroke_color
+        elif t == ToolType.CROP:
+            ann = CropAnnotation()
+            ann.rect = QRectF(pos, pos)
 
         if ann:
             ann.stroke_color = self.current_stroke_color
@@ -875,6 +1070,12 @@ class AnnotationCanvas(QWidget):
             # Resizing selected annotation via handle
             if self.selected_annotation and self._active_handle != HANDLE_NONE:
                 self.selected_annotation.resize_by_handle(self._active_handle, img_pos)
+                self.update()
+                return
+
+            # Resizing creating crop annotation via handle
+            if self._creating_annotation and self._creating_annotation.tool_type == ToolType.CROP and self._active_handle != HANDLE_NONE:
+                self._creating_annotation.resize_by_handle(self._active_handle, img_pos)
                 self.update()
                 return
 
@@ -913,6 +1114,13 @@ class AnnotationCanvas(QWidget):
             self._active_handle = HANDLE_NONE
 
             if self._creating_annotation:
+                if self._creating_annotation.tool_type == ToolType.CROP:
+                    r = self._creating_annotation.normalized_rect()
+                    if r.width() < 10 or r.height() < 10:
+                        self._creating_annotation = None
+                    self.update()
+                    return
+
                 r = self._creating_annotation.normalized_rect()
                 # Accept if has minimum size or points
                 if r.width() > 4 or r.height() > 4 or getattr(self._creating_annotation, "points", []):
@@ -929,9 +1137,16 @@ class AnnotationCanvas(QWidget):
 
     def keyPressEvent(self, event: QKeyEvent):
         key = event.key()
-        if key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if self._creating_annotation and self._creating_annotation.tool_type == ToolType.CROP:
+                self.apply_crop()
+                return
+        elif key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             self.delete_selected()
         elif key == Qt.Key.Key_Escape:
+            if self._creating_annotation and self._creating_annotation.tool_type == ToolType.CROP:
+                self.cancel_crop()
+                return
             if self.selected_annotation:
                 self.selected_annotation.is_selected = False
                 self.selected_annotation = None
@@ -951,6 +1166,7 @@ class AnnotationCanvas(QWidget):
     def paintEvent(self, event: QPaintEvent):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
 
         if not self._base_image or self._base_image.isNull():
             painter.fillRect(self.rect(), QColor("#1e1e1e"))

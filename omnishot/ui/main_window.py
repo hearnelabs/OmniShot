@@ -22,7 +22,7 @@ from PySide6.QtGui import (
     QImage, QPixmap, QIcon, QKeySequence, QShortcut, QColor, QFont, QClipboard,
     QGuiApplication, QPainter, QPen, QBrush
 )
-from PySide6.QtCore import Qt, QSize, Signal, QRect, QPoint
+from PySide6.QtCore import Qt, QSize, Signal, QRect, QPoint, QTimer
 
 from ..core.config import OmniShotConfig
 from ..core.ocr import OCREngine
@@ -630,6 +630,8 @@ class OmniShotMainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl++"), self, self.canvas.zoom_in)
         QShortcut(QKeySequence("Ctrl+="), self, self.canvas.zoom_in)
         QShortcut(QKeySequence("Ctrl+-"), self, self.canvas.zoom_out)
+        QShortcut(QKeySequence("Ctrl+0"), self, self._zoom_fit)
+        QShortcut(QKeySequence("Ctrl+1"), self, self.canvas.zoom_reset)
 
     def _toggle_sidebar(self):
         self.sidebar.setVisible(not self.sidebar.isVisible())
@@ -641,6 +643,12 @@ class OmniShotMainWindow(QMainWindow):
         self.canvas.current_stroke_color = color
         if self.canvas.selected_annotation:
             self.canvas.selected_annotation.stroke_color = color
+            if isinstance(self.canvas.selected_annotation, TextAnnotation):
+                self.canvas.selected_annotation.outline_color = color
+            elif isinstance(self.canvas.selected_annotation, StepBadgeAnnotation):
+                self.canvas.selected_annotation.badge_color = color
+            elif isinstance(self.canvas.selected_annotation, SpeechBalloonAnnotation):
+                self.canvas.selected_annotation.stroke_color = color
             self.canvas.update()
 
     def _on_thickness_changed(self, val: int):
@@ -662,8 +670,11 @@ class OmniShotMainWindow(QMainWindow):
 
     def _on_font_size_changed(self, val: int):
         self.canvas.current_font_size = val
-        if self.canvas.selected_annotation and isinstance(self.canvas.selected_annotation, TextAnnotation):
-            self.canvas.selected_annotation.font_size = val
+        if self.canvas.selected_annotation:
+            if hasattr(self.canvas.selected_annotation, "font_size"):
+                self.canvas.selected_annotation.font_size = val
+            if isinstance(self.canvas.selected_annotation, StepBadgeAnnotation):
+                self.canvas.selected_annotation.radius = float(val)
             self.canvas.update()
 
     def _on_bold_toggled(self, checked: bool):
@@ -708,8 +719,8 @@ class OmniShotMainWindow(QMainWindow):
         img = self.canvas.get_image()
         if not img or img.isNull():
             return
-        vw = self.scroll_area.viewport().width() - 30
-        vh = self.scroll_area.viewport().height() - 30
+        vw = max(100, self.scroll_area.viewport().width() - 30)
+        vh = max(100, self.scroll_area.viewport().height() - 30)
         scale = min(vw / img.width(), vh / img.height(), 1.0)
         self.canvas.set_zoom(max(0.1, scale))
 
@@ -732,7 +743,13 @@ class OmniShotMainWindow(QMainWindow):
         self.show()
         self.raise_()
         self.activateWindow()
-        self._zoom_fit()
+
+        # For tall scrolling images (e.g. height > 1600), fit window so entire document is surveyed;
+        # For standard region and window captures, default to 100% (1:1 native hardware resolution)!
+        if image.height() > 1600 or image.width() > 2400:
+            QTimer.singleShot(60, self._zoom_fit)
+        else:
+            self.canvas.set_zoom(1.0)
 
     def _finish_and_copy(self):
         self.copy_to_clipboard()
