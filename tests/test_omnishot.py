@@ -99,7 +99,7 @@ class TestOmniShot(unittest.TestCase):
         self.assertTrue(args.scroll)
         self.assertEqual(args.delay, 500)
 
-    def test_07_sharex_vector_annotations_and_tools(self):
+    def test_07_omnishot_vector_annotations_and_tools(self):
         from PySide6.QtWidgets import QApplication
         from PySide6.QtCore import QRectF, QPointF
         from omnishot.ui.canvas import (
@@ -120,7 +120,7 @@ class TestOmniShot(unittest.TestCase):
         canvas.set_active_tool(ToolType.ARROW)
         self.assertEqual(canvas.current_tool, ToolType.ARROW)
 
-        # Add ShareX vector items
+        # Add OmniShot vector items
         r = RectAnnotation(is_rounded=True)
         r.rect = QRectF(10, 10, 50, 40)
         self.assertTrue(r.hit_test(QPointF(25, 25)))
@@ -133,7 +133,7 @@ class TestOmniShot(unittest.TestCase):
         self.assertTrue(a.hit_test(QPointF(115, 40)))
         canvas.annotations.append(a)
 
-        t = TextAnnotation("ShareX Text")
+        t = TextAnnotation("OmniShot Text")
         t.rect = QRectF(20, 80, 100, 30)
         canvas.annotations.append(t)
 

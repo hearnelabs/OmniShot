@@ -12,7 +12,23 @@ class KWinCaptureBackend:
     def __init__(self):
         self._bus = None
         self._iface = None
+        self._last_workspace_size: Optional[Tuple[int, int]] = None
         self._init_dbus()
+
+    def get_display_scale(self) -> float:
+        """Returns physical-to-logical display scale factor (e.g. 1.25 for 1920x1200 at 1536x960)."""
+        try:
+            from PySide6.QtGui import QGuiApplication
+            screen = QGuiApplication.primaryScreen()
+            if screen and screen.geometry().width() > 0:
+                if self._last_workspace_size and self._last_workspace_size[0] > 0:
+                    return self._last_workspace_size[0] / screen.geometry().width()
+                if screen.geometry().width() < 1920:
+                    return 1920.0 / screen.geometry().width()
+                return 1.0
+        except Exception:
+            pass
+        return 1.25
 
     def _init_dbus(self):
         try:
@@ -72,7 +88,10 @@ class KWinCaptureBackend:
             }, signature="sv")
             res = self._iface.CaptureWorkspace(options, unix_fd)
             os.close(w_fd)
-            return self._read_image_from_pipe(r_fd, res)
+            img = self._read_image_from_pipe(r_fd, res)
+            if img and not img.isNull():
+                self._last_workspace_size = (img.width(), img.height())
+            return img
         finally:
             os.close(r_fd)
 

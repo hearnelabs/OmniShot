@@ -1,6 +1,6 @@
 """
-OmniShot Main Window - ShareX Professional Image Editor (KDE Plasma 6 Native)
-Faithfully implements the modern ShareX Pro layout and design:
+OmniShot Main Window - Professional Image Editor (KDE Plasma 6 Native)
+Faithfully implements the modern OmniShot layout and design:
 - Primary Categorized Ribbon (Drawing, Shapes, Redact, Badges, Output) with crisp vector icons
 - Collapsible Right-Hand Properties Panel (Color Palette grid, Active swatch, Sliders for Thickness & Opacity, Font settings, Toggles)
 - Centered Studio Viewport with image drop-shadow and dynamic resolution pill badge
@@ -32,7 +32,7 @@ from .canvas import (
     RedactAnnotation
 )
 from .icons import get_tool_icon
-from .theme import SHAREX_DARK_QSS
+from .theme import OMNISHOT_DARK_QSS
 
 
 class OCRDialog(QDialog):
@@ -40,7 +40,7 @@ class OCRDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("OmniShot - Extracted Text (OCR)")
         self.resize(520, 360)
-        self.setStyleSheet(SHAREX_DARK_QSS)
+        self.setStyleSheet(OMNISHOT_DARK_QSS)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -333,8 +333,12 @@ class OmniShotMainWindow(QMainWindow):
         self.current_filename: str = "OmniShot_Image.png"
         self._is_pinned = False
 
+        icon_path = Path(__file__).parent.parent.parent / "omnishot.svg"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon.fromTheme("omnishot", QIcon(str(icon_path))))
+
         self.resize(1180, 820)
-        self.setStyleSheet(SHAREX_DARK_QSS)
+        self.setStyleSheet(OMNISHOT_DARK_QSS)
 
         self._init_ui()
         self._setup_shortcuts()
@@ -391,7 +395,7 @@ class OmniShotMainWindow(QMainWindow):
 
         main_vbox.addWidget(workspace, 1)
 
-        # 3. Bottom Floating Action Pill (ShareX signature capsule)
+        # 3. Bottom Floating Action Pill (OmniShot signature capsule)
         self._create_bottom_action_pill()
 
     def _create_ribbon_bar(self) -> QFrame:
@@ -537,7 +541,7 @@ class OmniShotMainWindow(QMainWindow):
         return ribbon
 
     def _create_bottom_action_pill(self):
-        """Bottom Floating Action Capsule (Matching ShareX bottom pill)"""
+        """Bottom Floating Action Capsule (Matching OmniShot bottom pill)"""
         self.action_pill = QFrame(self.viewport_container)
         self.action_pill.setObjectName("bottomActionPill")
 

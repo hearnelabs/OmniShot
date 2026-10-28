@@ -1,7 +1,7 @@
 """
 OmniShot Vector Icon Factory
 Provides high-DPI crisp vector QIcons for all annotation tools,
-capture modes, and ribbon actions, matching KDE Plasma 6 Breeze Dark and ShareX Pro.
+capture modes, and ribbon actions, matching KDE Plasma 6 Breeze Dark and OmniShot Pro.
 """
 
 from PySide6.QtGui import (

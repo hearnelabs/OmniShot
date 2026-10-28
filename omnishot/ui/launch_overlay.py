@@ -11,13 +11,14 @@ Faithfully implements the Spectacle 6 in-situ launch experience:
 """
 
 from typing import Optional, List
+from pathlib import Path
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame,
     QToolButton, QMenu, QApplication, QGraphicsDropShadowEffect
 )
 from PySide6.QtGui import (
     QPainter, QPen, QBrush, QColor, QFont, QMouseEvent, QKeyEvent,
-    QPaintEvent, QImage, QAction, QCursor, QIcon
+    QPaintEvent, QImage, QAction, QCursor, QIcon, QGuiApplication
 )
 from PySide6.QtCore import Qt, QPoint, QRect, Signal, QSize
 
@@ -338,7 +339,7 @@ class SpectacleLaunchOverlay(QWidget):
     - Bottom floating capsule bar with highlighted green 'Scrolling Capture'
     - Interactive rectangle selection with live coordinates, resize handles, and loupe
     """
-    snapshotConfirmed = Signal(QRect)
+    snapshotConfirmed = Signal(QRect, object)
     scrollCaptureConfirmed = Signal(QRect, bool) # (rect, is_auto)
     fullscreenConfirmed = Signal()
     windowConfirmed = Signal()
@@ -354,6 +355,10 @@ class SpectacleLaunchOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+        icon_path = Path(__file__).parent.parent.parent / "omnishot.svg"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon.fromTheme("omnishot", QIcon(str(icon_path))))
 
         self._bg_image: QImage = background_image
         self._start_pos: Optional[QPoint] = None
@@ -397,7 +402,11 @@ class SpectacleLaunchOverlay(QWidget):
         self.selection_strip.manualScrollClicked.connect(lambda: self._confirm_scroll(False))
         self.selection_strip.discardClicked.connect(self._clear_selection)
 
-        if self._bg_image and not self._bg_image.isNull():
+        # Set geometry to match primary screen
+        screen = QGuiApplication.primaryScreen()
+        if screen:
+            self.setGeometry(screen.geometry())
+        elif self._bg_image and not self._bg_image.isNull():
             self.resize(self._bg_image.width(), self._bg_image.height())
 
     def resizeEvent(self, event):
@@ -654,10 +663,19 @@ class SpectacleLaunchOverlay(QWidget):
         self.overlayCancelled.emit()
 
     def _confirm_snapshot(self):
-        if self._selected_rect:
+        if self._selected_rect and not self._selected_rect.isEmpty():
             rect = self._selected_rect
+            cropped = None
+            if self._bg_image and not self._bg_image.isNull() and self.width() > 0 and self.height() > 0:
+                scale_x = self._bg_image.width() / self.width()
+                scale_y = self._bg_image.height() / self.height()
+                px = max(0, min(self._bg_image.width() - 1, int(round(rect.x() * scale_x))))
+                py = max(0, min(self._bg_image.height() - 1, int(round(rect.y() * scale_y))))
+                pw = max(1, min(self._bg_image.width() - px, int(round(rect.width() * scale_x))))
+                ph = max(1, min(self._bg_image.height() - py, int(round(rect.height() * scale_y))))
+                cropped = self._bg_image.copy(px, py, pw, ph)
             self.close()
-            self.snapshotConfirmed.emit(rect)
+            self.snapshotConfirmed.emit(rect, cropped)
 
     def _confirm_scroll(self, is_auto: bool):
         if self._selected_rect:
@@ -673,10 +691,11 @@ class SpectacleLaunchOverlay(QWidget):
     def paintEvent(self, event: QPaintEvent):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
 
         # 1. Base desktop screen image
         if self._bg_image and not self._bg_image.isNull():
-            painter.drawImage(0, 0, self._bg_image)
+            painter.drawImage(self.rect(), self._bg_image)
 
         # 2. Dimming mask (KDE Spectacle style)
         dim_color = QColor(0, 0, 0, 115)
@@ -763,18 +782,26 @@ class SpectacleLaunchOverlay(QWidget):
                 self._draw_loupe(painter, self._current_pos)
 
     def _draw_loupe(self, painter: QPainter, pos: QPoint):
-        if not self._bg_image or self._bg_image.isNull():
+        if not self._bg_image or self._bg_image.isNull() or self.width() <= 0 or self.height() <= 0:
             return
+
+        scale_x = self._bg_image.width() / self.width()
+        scale_y = self._bg_image.height() / self.height()
+        phys_x = max(0, min(self._bg_image.width() - 1, int(round(pos.x() * scale_x))))
+        phys_y = max(0, min(self._bg_image.height() - 1, int(round(pos.y() * scale_y))))
 
         loupe_radius = 52
         zoom_factor = 4
         sample_w = int(loupe_radius * 2 / zoom_factor)
         sample_h = sample_w
 
-        sx = pos.x() - sample_w // 2
-        sy = pos.y() - sample_h // 2
+        sample_phys_w = int(round(sample_w * scale_x))
+        sample_phys_h = int(round(sample_h * scale_y))
 
-        cropped = self._bg_image.copy(sx, sy, sample_w, sample_h)
+        sx = phys_x - sample_phys_w // 2
+        sy = phys_y - sample_phys_h // 2
+
+        cropped = self._bg_image.copy(sx, sy, sample_phys_w, sample_phys_h)
         if cropped.isNull():
             return
 
@@ -803,7 +830,7 @@ class SpectacleLaunchOverlay(QWidget):
         painter.drawLine(center.x(), center.y() - 8, center.x(), center.y() + 8)
 
         # Info badge
-        pixel_color = self._bg_image.pixelColor(min(self._bg_image.width() - 1, max(0, pos.x())), min(self._bg_image.height() - 1, max(0, pos.y())))
+        pixel_color = self._bg_image.pixelColor(phys_x, phys_y)
         coord_text = f"{pos.x()},{pos.y()} {pixel_color.name()}"
         painter.setFont(QFont("Noto Sans", 9, QFont.Weight.Bold))
         painter.fillRect(lx, ly + loupe_radius * 2 + 2, loupe_radius * 2, 18, QColor(0, 0, 0, 190))

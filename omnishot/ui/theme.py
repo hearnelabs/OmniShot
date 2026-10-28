@@ -1,10 +1,10 @@
 """
-OmniShot Theme - ShareX Professional Dark Theme (KDE Plasma 6 Native)
-Faithfully implements the modern ShareX Pro ribbon, right-hand palette drawer,
+OmniShot Theme - Professional Dark Theme (KDE Plasma 6 Native)
+Faithfully implements the modern OmniShot ribbon, right-hand palette drawer,
 and bottom action capsule.
 """
 
-SHAREX_DARK_QSS = """
+OMNISHOT_DARK_QSS = """
 QMainWindow, QDialog {
     background-color: #14171c;
     color: #eff0f1;
@@ -263,3 +263,4 @@ QMenu::item:selected {
     color: #ffffff;
 }
 """
+

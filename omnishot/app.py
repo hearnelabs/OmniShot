@@ -128,15 +128,16 @@ class OmniShotApp(QObject):
             else:
                 self.show_main_window()
 
-    def _on_snapshot_confirmed(self, rect: QRect):
-        img = self.capture_backend.capture_area(rect.x(), rect.y(), rect.width(), rect.height())
+    def _on_snapshot_confirmed(self, rect: QRect, img: Optional[QImage] = None):
+        if not img or img.isNull():
+            img = self.capture_backend.capture_area(rect.x(), rect.y(), rect.width(), rect.height())
         if img:
             self._show_editor_with_image(img)
         else:
             self.show_main_window()
 
     def _show_editor_with_image(self, img: QImage):
-        """Displays the full ShareX Pro Annotation Editor loaded with the captured image."""
+        """Displays the full OmniShot Annotation Editor loaded with the captured image."""
         mw = self.get_or_create_main_window()
         mw.set_captured_image(img)
         mw.show()

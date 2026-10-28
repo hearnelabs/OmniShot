@@ -1,6 +1,6 @@
 """
 OmniShot Vector-Based Annotation Canvas
-Matches ShareX Image Editor capabilities:
+OmniShot Image Editor capabilities:
 Interactive vector annotations, selection handles, resizing, dragging,
 drop shadows, speech balloons, step badges, blur, pixelate, magnify, and full undo/redo.
 """
@@ -57,7 +57,7 @@ class BaseAnnotation:
     def __init__(self):
         self.tool_type: str = ToolType.RECTANGLE
         self.rect: QRectF = QRectF()
-        self.stroke_color: QColor = QColor("#ff0000") # ShareX default red
+        self.stroke_color: QColor = QColor("#ff0000") # OmniShot default red
         self.fill_color: QColor = QColor(0, 0, 0, 0) # transparent by default
         self.stroke_width: int = 4
         self.has_shadow: bool = True
@@ -139,7 +139,7 @@ class BaseAnnotation:
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(r.adjusted(-3, -3, 3, 3))
 
-        # Circular handles (like ShareX)
+        # Circular handles
         painter.setPen(QPen(QColor(0, 120, 215), 1.5))
         painter.setBrush(QBrush(QColor(255, 255, 255)))
         for pt in self.get_handles().values():
@@ -391,7 +391,7 @@ class FreehandAnnotation(BaseAnnotation):
 
 
 class TextAnnotation(BaseAnnotation):
-    def __init__(self, text: str = "ShareX Text"):
+    def __init__(self, text: str = "OmniShot Text"):
         super().__init__()
         self.tool_type = ToolType.TEXT
         self.text: str = text
@@ -401,7 +401,7 @@ class TextAnnotation(BaseAnnotation):
         self.is_italic: bool = False
         self.is_underline: bool = False
         self.text_color: QColor = QColor("#ffffff")
-        self.outline_color: QColor = QColor("#ff0000") # ShareX red outline
+        self.outline_color: QColor = QColor("#ff0000") # OmniShot red outline
         self.fill_color: QColor = QColor(0, 0, 0, 0)
         self.draw_outline: bool = True
 
@@ -443,7 +443,7 @@ class TextAnnotation(BaseAnnotation):
         if self.has_shadow:
             painter.strokePath(path, QPen(QColor(0, 0, 0, 140), 6))
 
-        # Thick colorful outline (ShareX trademark style)
+        # Thick colorful outline (OmniShot signature style)
         if self.draw_outline:
             outline_pen = QPen(self.outline_color, 4.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
             painter.strokePath(path, outline_pen)
@@ -699,7 +699,7 @@ class AnnotationCanvas(QWidget):
 
         # Current tool & properties
         self.current_tool: str = ToolType.POINTER
-        self.current_stroke_color: QColor = QColor("#ff0000") # ShareX red
+        self.current_stroke_color: QColor = QColor("#ff0000") # OmniShot red
         self.current_fill_color: QColor = QColor(0, 0, 0, 0) # transparent
         self.current_stroke_width: int = 4
         self.current_font_size: int = 24
@@ -716,12 +716,25 @@ class AnnotationCanvas(QWidget):
         self._current_mouse_pos = QPointF()
         self._creating_annotation: Optional[BaseAnnotation] = None
 
+        # Determine physical-to-logical display scale factor for 1:1 hardware pixel mapping
+        self._display_scale: float = 1.25
+        try:
+            from ..core.capture import get_capture_backend
+            self._display_scale = get_capture_backend().get_display_scale()
+        except Exception:
+            self._display_scale = 1.25
+
         # Panning
         self._panning = False
         self._pan_start = QPoint()
 
     def set_image(self, image: QImage):
         self._base_image = image.copy()
+        try:
+            from ..core.capture import get_capture_backend
+            self._display_scale = get_capture_backend().get_display_scale()
+        except Exception:
+            pass
         self.annotations.clear()
         self.selected_annotation = None
         self._history_stack.clear()
@@ -811,17 +824,19 @@ class AnnotationCanvas(QWidget):
         if not self._base_image:
             self.resize(800, 600)
             return
-        w = int(self._base_image.width() * self._zoom)
-        h = int(self._base_image.height() * self._zoom)
+        scale = self._display_scale if self._display_scale > 0 else 1.25
+        w = int((self._base_image.width() / scale) * self._zoom)
+        h = int((self._base_image.height() / scale) * self._zoom)
         self.setFixedSize(max(100, w), max(100, h))
 
     def _to_image_coords(self, pt: QPointF) -> QPointF:
-        if self._zoom <= 0:
+        scale = (self._zoom / self._display_scale) if self._display_scale > 0 else self._zoom
+        if scale <= 0:
             return pt
-        return QPointF(pt.x() / self._zoom, pt.y() / self._zoom)
+        return QPointF(pt.x() / scale, pt.y() / scale)
 
     def set_active_tool(self, tool_type: str):
-        """Sets the active ShareX annotation tool and updates canvas state/cursor."""
+        """Sets the active OmniShot annotation tool and updates canvas state/cursor."""
         self.current_tool = tool_type
 
         # If switching away from pointer, deselect currently selected annotation
@@ -1179,9 +1194,11 @@ class AnnotationCanvas(QWidget):
         # 1. Dark transparency checkerboard pattern
         self._draw_checkerboard(painter)
 
-        # 2. Draw base screenshot scaled by zoom
+        # 2. Draw base screenshot scaled by zoom and mapped 1:1 to hardware pixels
+        scale = (self._zoom / self._display_scale) if self._display_scale > 0 else self._zoom
+
         painter.save()
-        painter.scale(self._zoom, self._zoom)
+        painter.scale(scale, scale)
 
         painter.drawImage(0, 0, self._base_image)
 

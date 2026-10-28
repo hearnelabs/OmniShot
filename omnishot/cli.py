@@ -8,6 +8,7 @@ import sys
 import argparse
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QIcon
 from PySide6.QtCore import QTimer
 
 from .core.config import OmniShotConfig
@@ -43,10 +44,16 @@ def main():
     args = parser.parse_args()
 
     app = QApplication(sys.argv)
-    app.setApplicationName("OmniShot")
+    app.setApplicationName("omnishot")
     app.setApplicationDisplayName("OmniShot")
     app.setOrganizationName("HearneLabs")
     app.setOrganizationDomain("hearnelabs.com")
+    app.setDesktopFileName("omnishot")
+
+    # Set application icon for KDE Plasma taskbar, titlebar, and launcher
+    icon_path = Path(__file__).parent.parent / "omnishot.svg"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon.fromTheme("omnishot", QIcon(str(icon_path))))
 
     config = OmniShotConfig.load()
     controller = OmniShotApp(app, config)
