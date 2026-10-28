@@ -1,40 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
   <defs>
-    <linearGradient id="o1_rim" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#00f0ff"/>
-      <stop offset="50%" stop-color="#00e676"/>
-      <stop offset="100%" stop-color="#00b4d8"/>
+    <linearGradient id="o5_c1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
     </linearGradient>
-    <linearGradient id="o1_bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#1e293b"/>
-      <stop offset="100%" stop-color="#0f172a"/>
-    </linearGradient>
-    <linearGradient id="o1_lens" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#00f0ff"/>
-      <stop offset="40%" stop-color="#0284c7"/>
-      <stop offset="100%" stop-color="#032b4d"/>
+    <linearGradient id="o5_c2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#059669"/>
     </linearGradient>
   </defs>
-  <!-- Full-bleed outer neon halo & ring (fills 96% of tile, radius 60 out of 64) -->
-  <circle cx="64" cy="64" r="60" fill="url(#o1_bg)" stroke="url(#o1_rim)" stroke-width="5"/>
+  <!-- Full-bleed Breeze Circle Chassis (diameter 120, r=60) -->
+  <circle cx="64" cy="64" r="60" fill="#1e293b" stroke="#38bdf8" stroke-width="4.5"/>
   
-  <!-- Outer Aperture Track -->
-  <circle cx="64" cy="64" r="49" fill="none" stroke="#334155" stroke-width="2" stroke-dasharray="6 4"/>
+  <!-- Layer 1 Sheet -->
+  <rect x="24" y="42" width="80" height="58" rx="10" fill="url(#o5_c1)" transform="rotate(-6 64 71)" opacity="0.8"/>
   
-  <!-- 6 Dynamic Iris Blades -->
-  <g fill="none" stroke="url(#o1_rim)" stroke-width="3" stroke-linecap="round">
-    <path d="M 64 15 C 84 22, 102 38, 106 64" />
-    <path d="M 106 64 C 102 90, 84 106, 64 113" />
-    <path d="M 64 113 C 44 106, 26 90, 22 64" />
-    <path d="M 22 64 C 26 38, 44 22, 64 15" />
-  </g>
+  <!-- Layer 2 Extended Scroll Sheet -->
+  <rect x="24" y="30" width="80" height="58" rx="10" fill="url(#o5_c2)" transform="rotate(4 64 59)" opacity="0.95"/>
   
-  <!-- Center Optical Lens Element -->
-  <circle cx="64" cy="64" r="32" fill="url(#o1_lens)" stroke="#00e676" stroke-width="3"/>
-  <circle cx="64" cy="64" r="20" fill="#00f0ff" opacity="0.2"/>
+  <!-- Top Optical Camera Bezel -->
+  <circle cx="64" cy="59" r="28" fill="#0f172a" stroke="#ffffff" stroke-width="3.5"/>
+  <circle cx="64" cy="59" r="19" fill="#0284c7"/>
+  <path d="M 51 49 Q 64 41 77 49 Q 70 57 51 49 Z" fill="#ffffff" opacity="0.55"/>
+  <circle cx="57" cy="53" r="4.5" fill="#ffffff" opacity="0.9"/>
   
-  <!-- Optical Reflections / Flare -->
-  <path d="M 46 50 Q 64 38 82 50 Q 72 64 46 50 Z" fill="#ffffff" opacity="0.55"/>
-  <circle cx="54" cy="52" r="5.5" fill="#ffffff" opacity="0.9"/>
-  <circle cx="75" cy="75" r="3" fill="#00f0ff" opacity="0.9"/>
+  <!-- Breeze 6 Fold / Chevron Accent -->
+  <polygon points="64,96 73,107 55,107" fill="#38bdf8"/>
 </svg>
