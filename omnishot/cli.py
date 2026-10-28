@@ -59,10 +59,10 @@ def main():
             if path.exists():
                 img = QImage(str(path))
                 if not img.isNull():
-                    controller.main_window.set_captured_image(img)
+                    controller._show_editor_with_image(img)
                     return
             print(f"[OmniShot] Could not load image: {args.edit_existing}")
-            controller.show_main_window()
+            controller.launch_interactive()
         elif args.scroll:
             controller.trigger_capture("scroll_auto")
         elif args.manual_scroll:
@@ -74,10 +74,10 @@ def main():
         elif args.activewindow:
             controller.trigger_capture("window")
         elif args.launchonly:
-            controller.show_main_window()
+            controller.launch_interactive()
         else:
-            # Default action: show main window with quick action options
-            controller.show_main_window()
+            # Default action: launch Spectacle 6 in-situ floating overlay
+            controller.launch_interactive()
 
     delay = max(0, args.delay)
     QTimer.singleShot(delay, start_action)

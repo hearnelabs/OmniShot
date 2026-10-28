@@ -18,6 +18,7 @@ from .core.stitcher import ScrollingStitcher
 from .ui.main_window import OmniShotMainWindow
 from .ui.snip_overlay import SnipSelectionOverlay
 from .ui.scroll_hud import ScrollingCaptureHUD
+from .ui.launch_overlay import SpectacleLaunchOverlay
 
 class OmniShotApp(QObject):
     def __init__(self, qapp: QApplication, config: Optional[OmniShotConfig] = None):
@@ -27,11 +28,10 @@ class OmniShotApp(QObject):
         self.capture_backend = get_capture_backend()
         self.uinput_scroller = UInputScroller()
 
-        # Windows
-        self.main_window = OmniShotMainWindow(self.config)
-        self.main_window.requestCapture.connect(self.trigger_capture)
+        # Windows (Editor is lazily shown only post-capture)
+        self.main_window: Optional[OmniShotMainWindow] = None
 
-        self._active_overlay: Optional[SnipSelectionOverlay] = None
+        self._active_overlay: Optional[SpectacleLaunchOverlay] = None
         self._scroll_hud: Optional[ScrollingCaptureHUD] = None
         self._stitcher: Optional[ScrollingStitcher] = None
         self._scroll_timer: Optional[QTimer] = None
@@ -39,30 +39,77 @@ class OmniShotApp(QObject):
         self._is_auto_scroll = True
         self._ticks_without_movement = 0
 
+    def get_or_create_main_window(self) -> OmniShotMainWindow:
+        if self.main_window is None:
+            self.main_window = OmniShotMainWindow(self.config)
+            self.main_window.requestCapture.connect(self.trigger_capture)
+        return self.main_window
+
     def show_main_window(self):
-        self.main_window.show()
-        self.main_window.raise_()
-        self.main_window.activateWindow()
+        mw = self.get_or_create_main_window()
+        mw.show()
+        mw.raise_()
+        mw.activateWindow()
+
+    def launch_interactive(self, delay_ms: int = 0):
+        """Launches the Spectacle 6 in-situ floating overlay (initial launch state)."""
+        if self.main_window and self.main_window.isVisible():
+            self.main_window.hide()
+
+        if delay_ms > 0:
+            QTimer.singleShot(delay_ms, self._do_launch_interactive)
+        else:
+            self._do_launch_interactive()
+
+    def _do_launch_interactive(self):
+        bg_screen = self.capture_backend.capture_workspace()
+        if not bg_screen or bg_screen.isNull():
+            print("[OmniShot] Failed to capture workspace for launch overlay")
+            self.show_main_window()
+            return
+
+        self._active_overlay = SpectacleLaunchOverlay(bg_screen)
+        self._active_overlay.snapshotConfirmed.connect(self._on_snapshot_confirmed)
+        self._active_overlay.scrollCaptureConfirmed.connect(self._on_scroll_confirmed)
+        self._active_overlay.fullscreenConfirmed.connect(lambda: self.trigger_capture("fullscreen"))
+        self._active_overlay.windowConfirmed.connect(lambda: self.trigger_capture("window"))
+        self._active_overlay.overlayCancelled.connect(self._on_overlay_cancelled)
+        self._active_overlay.showFullScreen()
+        self._active_overlay.raise_()
+        self._active_overlay.activateWindow()
+
+    def _on_overlay_cancelled(self):
+        if self.main_window and not self.main_window.isHidden():
+            self.show_main_window()
+        else:
+            self.qapp.quit()
 
     def trigger_capture(self, mode: str):
         """Triggers capture for: region, scroll_auto, scroll_manual, fullscreen, window."""
-        self.main_window.hide()
+        if self.main_window and self.main_window.isVisible():
+            self.main_window.hide()
         # Brief pause to allow window manager to hide window
         QTimer.singleShot(250, lambda: self._execute_capture_trigger(mode))
 
     def _execute_capture_trigger(self, mode: str):
-        if mode in ("region", "scroll_auto", "scroll_manual"):
-            # Capture whole workspace to display on overlay
+        if mode in ("region", "interactive"):
+            self._do_launch_interactive()
+
+        elif mode in ("scroll_auto", "scroll_manual"):
             bg_screen = self.capture_backend.capture_workspace()
             if not bg_screen or bg_screen.isNull():
-                print("[OmniShot] Failed to capture workspace for snip overlay")
+                print("[OmniShot] Failed to capture workspace for scroll overlay")
                 self.show_main_window()
                 return
 
-            self._active_overlay = SnipSelectionOverlay(bg_screen)
+            self._active_overlay = SpectacleLaunchOverlay(bg_screen)
             self._active_overlay.snapshotConfirmed.connect(self._on_snapshot_confirmed)
             self._active_overlay.scrollCaptureConfirmed.connect(self._on_scroll_confirmed)
-            self._active_overlay.overlayCancelled.connect(self.show_main_window)
+            self._active_overlay.fullscreenConfirmed.connect(lambda: self.trigger_capture("fullscreen"))
+            self._active_overlay.windowConfirmed.connect(lambda: self.trigger_capture("window"))
+            self._active_overlay.overlayCancelled.connect(self._on_overlay_cancelled)
+            # Switch into scroll prompt
+            self._active_overlay._on_pill_scroll_triggered()
             self._active_overlay.showFullScreen()
             self._active_overlay.raise_()
             self._active_overlay.activateWindow()
@@ -70,23 +117,31 @@ class OmniShotApp(QObject):
         elif mode == "fullscreen":
             img = self.capture_backend.capture_workspace()
             if img:
-                self.main_window.set_captured_image(img)
+                self._show_editor_with_image(img)
             else:
                 self.show_main_window()
 
         elif mode == "window":
             img = self.capture_backend.capture_active_window()
             if img:
-                self.main_window.set_captured_image(img)
+                self._show_editor_with_image(img)
             else:
                 self.show_main_window()
 
     def _on_snapshot_confirmed(self, rect: QRect):
         img = self.capture_backend.capture_area(rect.x(), rect.y(), rect.width(), rect.height())
         if img:
-            self.main_window.set_captured_image(img)
+            self._show_editor_with_image(img)
         else:
             self.show_main_window()
+
+    def _show_editor_with_image(self, img: QImage):
+        """Displays the full ShareX Pro Annotation Editor loaded with the captured image."""
+        mw = self.get_or_create_main_window()
+        mw.set_captured_image(img)
+        mw.show()
+        mw.raise_()
+        mw.activateWindow()
 
     def _on_scroll_confirmed(self, rect: QRect, is_auto: bool):
         self._scroll_target_rect = rect
@@ -232,7 +287,7 @@ class OmniShotApp(QObject):
         if self._stitcher and self._stitcher.get_stitched_image():
             stitched = self._stitcher.get_stitched_image()
             print(f"[OmniShot] Scrolling session finished! Final image size: {stitched.width()}x{stitched.height()} ({self._stitcher.frame_count} frames)")
-            self.main_window.set_captured_image(stitched)
+            self._show_editor_with_image(stitched)
         else:
             self.show_main_window()
 
@@ -249,4 +304,7 @@ class OmniShotApp(QObject):
             self.uinput_scroller.close()
 
         print("[OmniShot] Scrolling session cancelled by user")
-        self.show_main_window()
+        if self.main_window and not self.main_window.isHidden():
+            self.show_main_window()
+        else:
+            self.qapp.quit()

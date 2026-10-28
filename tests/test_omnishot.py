@@ -139,6 +139,26 @@ class TestOmniShot(unittest.TestCase):
         self.assertEqual(comp.width(), 300)
         self.assertEqual(comp.height(), 200)
 
+    def test_08_spectacle_launch_overlay(self):
+        from omnishot.ui.launch_overlay import SpectacleLaunchOverlay
+        bg = QImage(800, 600, QImage.Format.Format_RGBX8888)
+        bg.fill(QColor(30, 35, 42))
+
+        overlay = SpectacleLaunchOverlay(bg)
+        overlay.resize(800, 600)
+        
+        self.assertIsNotNone(overlay.bottom_pill)
+        self.assertEqual(overlay.bottom_pill.btn_scroll.text(), "📜 Scrolling Capture")
+        self.assertEqual(overlay.top_pill.text(), "OmniShot - Ready")
+        
+        # Simulate selection
+        from PySide6.QtCore import QRect
+        overlay._selected_rect = QRect(50, 50, 200, 150)
+        overlay._position_selection_strip(overlay._selected_rect)
+        self.assertFalse(overlay.selection_strip.isHidden())
+        self.assertEqual(overlay._selected_rect.width(), 200)
+        overlay.close()
+
 if __name__ == "__main__":
     unittest.main()
 

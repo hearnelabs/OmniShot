@@ -54,6 +54,14 @@ class BaseAnnotation:
         self.has_shadow: bool = True
         self.is_selected: bool = False
 
+    @property
+    def stroke_qcolor(self) -> QColor:
+        return self.stroke_color if isinstance(self.stroke_color, QColor) else QColor(self.stroke_color)
+
+    @property
+    def fill_qcolor(self) -> QColor:
+        return self.fill_color if isinstance(self.fill_color, QColor) else QColor(self.fill_color)
+
     def normalized_rect(self) -> QRectF:
         return self.rect.normalized()
 
@@ -155,9 +163,9 @@ class RectAnnotation(BaseAnnotation):
             else:
                 painter.drawRect(sr)
 
-        pen = QPen(self.stroke_color, self.stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.MiterJoin)
+        pen = QPen(self.stroke_qcolor, self.stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.MiterJoin)
         painter.setPen(pen)
-        painter.setBrush(QBrush(self.fill_color) if self.fill_color.alpha() > 0 else Qt.BrushStyle.NoBrush)
+        painter.setBrush(QBrush(self.fill_qcolor) if self.fill_qcolor.alpha() > 0 else Qt.BrushStyle.NoBrush)
 
         if self.is_rounded:
             painter.drawRoundedRect(r, self.corner_radius, self.corner_radius)
@@ -185,9 +193,9 @@ class EllipseAnnotation(BaseAnnotation):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawEllipse(r.translated(2.5, 2.5))
 
-        pen = QPen(self.stroke_color, self.stroke_width, Qt.PenStyle.SolidLine)
+        pen = QPen(self.stroke_qcolor, self.stroke_width, Qt.PenStyle.SolidLine)
         painter.setPen(pen)
-        painter.setBrush(QBrush(self.fill_color) if self.fill_color.alpha() > 0 else Qt.BrushStyle.NoBrush)
+        painter.setBrush(QBrush(self.fill_qcolor) if self.fill_qcolor.alpha() > 0 else Qt.BrushStyle.NoBrush)
         painter.drawEllipse(r)
         painter.restore()
 
@@ -231,7 +239,7 @@ class LineAnnotation(BaseAnnotation):
             painter.setPen(QPen(QColor(0, 0, 0, 90), self.stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             painter.drawLine(self.p1 + QPointF(2, 2), self.p2 + QPointF(2, 2))
 
-        painter.setPen(QPen(self.stroke_color, self.stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        painter.setPen(QPen(self.stroke_qcolor, self.stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         painter.drawLine(self.p1, self.p2)
         painter.restore()
 
@@ -296,7 +304,7 @@ class ArrowAnnotation(BaseAnnotation):
             painter.drawPolygon(QPolygonF([p2_s, pt1, pt2]))
 
         # Arrow shaft
-        painter.setPen(QPen(self.stroke_color, self.stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        painter.setPen(QPen(self.stroke_qcolor, self.stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         painter.drawLine(self.p1, self.p2)
 
         # Arrowhead
@@ -305,7 +313,7 @@ class ArrowAnnotation(BaseAnnotation):
         pt_head1 = QPointF(self.p2.x() + head_len * math.cos(a1), self.p2.y() + head_len * math.sin(a1))
         pt_head2 = QPointF(self.p2.x() + head_len * math.cos(a2), self.p2.y() + head_len * math.sin(a2))
 
-        painter.setBrush(QBrush(self.stroke_color))
+        painter.setBrush(QBrush(self.stroke_qcolor))
         painter.drawPolygon(QPolygonF([self.p2, pt_head1, pt_head2]))
         painter.restore()
 
@@ -337,7 +345,7 @@ class FreehandAnnotation(BaseAnnotation):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         if self.is_highlighter:
-            hl = QColor(self.stroke_color)
+            hl = QColor(self.stroke_qcolor)
             hl.setAlpha(95)
             pen = QPen(hl, self.stroke_width * 3.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.SquareCap, Qt.PenJoinStyle.BevelJoin)
             painter.setPen(pen)
@@ -347,7 +355,7 @@ class FreehandAnnotation(BaseAnnotation):
                 for i in range(len(self.points) - 1):
                     painter.drawLine(self.points[i] + QPointF(2, 2), self.points[i+1] + QPointF(2, 2))
 
-            pen = QPen(self.stroke_color, self.stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+            pen = QPen(self.stroke_qcolor, self.stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
             painter.setPen(pen)
 
         for i in range(len(self.points) - 1):
@@ -454,8 +462,8 @@ class SpeechBalloonAnnotation(BaseAnnotation):
             painter.fillPath(path.translated(2.5, 2.5), QBrush(QColor(0, 0, 0, 90)))
 
         # Fill & Border
-        painter.fillPath(path, QBrush(self.fill_color))
-        painter.strokePath(path, QPen(self.stroke_color, self.stroke_width))
+        painter.fillPath(path, QBrush(self.fill_qcolor))
+        painter.strokePath(path, QPen(self.stroke_qcolor, self.stroke_width))
 
         # Text
         font = QFont("Noto Sans", self.font_size, QFont.Weight.Bold)
@@ -574,7 +582,7 @@ class MagnifyAnnotation(BaseAnnotation):
             painter.fillRect(r.translated(3, 3), QColor(0, 0, 0, 90))
 
         painter.drawImage(r.topLeft(), zoomed)
-        painter.setPen(QPen(self.stroke_color, self.stroke_width))
+        painter.setPen(QPen(self.stroke_qcolor, self.stroke_width))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(r)
         painter.restore()
