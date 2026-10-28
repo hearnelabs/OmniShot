@@ -351,7 +351,7 @@ class SpectacleLaunchOverlay(QWidget):
     windowConfirmed = Signal()
     overlayCancelled = Signal()
 
-    def __init__(self, background_image: QImage, parent=None):
+    def __init__(self, background_image: QImage, target_screen=None, parent=None):
         super().__init__(parent)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
@@ -367,6 +367,7 @@ class SpectacleLaunchOverlay(QWidget):
             self.setWindowIcon(QIcon.fromTheme("omnishot", QIcon(str(icon_path))))
 
         self._bg_image: QImage = background_image
+        self._target_screen = target_screen
         self._start_pos: Optional[QPoint] = None
         self._current_pos: Optional[QPoint] = None
         self._selected_rect: Optional[QRect] = None
@@ -409,12 +410,16 @@ class SpectacleLaunchOverlay(QWidget):
         self.selection_strip.manualScrollClicked.connect(lambda: self._confirm_scroll(False))
         self.selection_strip.discardClicked.connect(self._clear_selection)
 
-        # Set geometry to match primary screen
-        screen = QGuiApplication.primaryScreen()
-        if screen:
-            self.setGeometry(screen.geometry())
-        elif self._bg_image and not self._bg_image.isNull():
-            self.resize(self._bg_image.width(), self._bg_image.height())
+        # Set geometry to match target screen or primary screen
+        if target_screen:
+            self.setScreen(target_screen)
+            self.setGeometry(target_screen.geometry())
+        else:
+            screen = QGuiApplication.primaryScreen()
+            if screen:
+                self.setGeometry(screen.geometry())
+            elif self._bg_image and not self._bg_image.isNull():
+                self.resize(self._bg_image.width(), self._bg_image.height())
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

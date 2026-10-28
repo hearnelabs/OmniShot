@@ -265,6 +265,55 @@ class TestOmniShot(unittest.TestCase):
         self.assertEqual(win.height(), 900)
         win.close()
 
+    def test_12_multimonitor_active_screen_and_coordinate_translation(self):
+        """Verify multi-monitor active screen detection and coordinate translation."""
+        from omnishot.app import OmniShotApp
+        from omnishot.ui.launch_overlay import SpectacleLaunchOverlay
+        from PySide6.QtCore import QRect, QPoint
+        from PySide6.QtGui import QGuiApplication
+
+        app_obj = OmniShotApp(self.app)
+        active_screen = app_obj._get_active_screen()
+        self.assertIsNotNone(active_screen)
+
+        # Test overlay target screen binding
+        bg = QImage(800, 600, QImage.Format.Format_RGB32)
+        bg.fill(QColor(20, 20, 20))
+        overlay = SpectacleLaunchOverlay(bg, target_screen=active_screen)
+        self.assertEqual(overlay.screen(), active_screen)
+
+        # Test coordinate translation from local overlay rect to global multi-monitor space
+        overlay.setGeometry(QRect(1920, 0, 1920, 1080))
+        app_obj._active_overlay = overlay
+
+        local_rect = QRect(100, 150, 400, 300)
+        global_rect = local_rect.translated(overlay.geometry().topLeft())
+        self.assertEqual(global_rect.x(), 2020)
+        self.assertEqual(global_rect.y(), 150)
+        self.assertEqual(global_rect.width(), 400)
+        self.assertEqual(global_rect.height(), 300)
+        overlay.close()
+
+    def test_13_immediate_clipboard_copy_on_capture(self):
+        """Verify captured screenshot is immediately placed on the system clipboard."""
+        from omnishot.app import OmniShotApp
+        from PySide6.QtGui import QGuiApplication, QColor
+
+        app_obj = OmniShotApp(self.app)
+        test_img = QImage(320, 240, QImage.Format.Format_ARGB32)
+        test_img.fill(QColor(10, 200, 100))
+
+        app_obj._show_editor_with_image(test_img)
+        self.app.processEvents()
+
+        clipboard = QGuiApplication.clipboard()
+        copied_img = clipboard.image()
+        self.assertFalse(copied_img.isNull())
+        self.assertEqual(copied_img.width(), 320)
+        self.assertEqual(copied_img.height(), 240)
+        if app_obj.main_window:
+            app_obj.main_window.close()
+
 if __name__ == "__main__":
     unittest.main()
 

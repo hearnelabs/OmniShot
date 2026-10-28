@@ -95,6 +95,20 @@ class KWinCaptureBackend:
         finally:
             os.close(r_fd)
 
+    def get_active_output_name(self) -> str:
+        """Queries KWin for the currently active output name (display under cursor) on Wayland."""
+        try:
+            if not self._bus:
+                self._bus = dbus.SessionBus()
+            kwin_obj = self._bus.get_object("org.kde.KWin", "/KWin")
+            kwin_iface = dbus.Interface(kwin_obj, "org.kde.KWin")
+            name = str(kwin_iface.activeOutputName())
+            if name:
+                return name
+        except Exception:
+            pass
+        return ""
+
     def capture_screen(self, screen_name: str = "", include_cursor: bool = False) -> Optional[QImage]:
         """Captures current or specified screen/monitor at native resolution."""
         if not self._iface:
@@ -102,7 +116,20 @@ class KWinCaptureBackend:
             if not self._iface:
                 return None
 
-        # Fallback to CaptureWorkspace if screen name is not given or invalid
+        # Auto-detect active output name if not specified
+        if not screen_name:
+            screen_name = self.get_active_output_name()
+
+        # If still empty, try primary screen name via Qt or fallback
+        if not screen_name:
+            try:
+                from PySide6.QtGui import QGuiApplication
+                p = QGuiApplication.primaryScreen()
+                if p:
+                    screen_name = p.name()
+            except Exception:
+                pass
+
         if not screen_name:
             screen_name = "eDP-1"
 

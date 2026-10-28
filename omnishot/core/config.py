@@ -16,7 +16,7 @@ class OmniShotConfig:
     filename_template: str = "OmniShot_%Y%m%d_%H%M%S.png"
     default_format: str = "png"
     copy_to_clipboard_on_save: bool = True
-    copy_to_clipboard_on_capture: bool = False
+    copy_to_clipboard_on_capture: bool = True
     notify_on_save: bool = True
     
     # Scrolling Capture settings

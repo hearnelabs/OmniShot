@@ -225,7 +225,8 @@ class OmniShotSettingsDialog(QDialog):
         self.chk_copy_on_save = QCheckBox("Automatically copy image to clipboard when saving screenshot file")
         wf_layout.addWidget(self.chk_copy_on_save)
 
-        self.chk_copy_on_capture = QCheckBox("Copy image to clipboard immediately upon capture (skip editor)")
+        self.chk_copy_on_capture = QCheckBox("Copy image to clipboard immediately upon capture")
+        self.chk_copy_on_capture.setToolTip("Puts captured image onto system clipboard right away while keeping editor open")
         wf_layout.addWidget(self.chk_copy_on_capture)
 
         self.chk_notify_on_save = QCheckBox("Display desktop notification when screenshot is saved")
