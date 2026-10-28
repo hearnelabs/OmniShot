@@ -221,24 +221,30 @@ class TestOmniShot(unittest.TestCase):
 
     def test_10_settings_dialog_preferences_and_shortcuts(self):
         from omnishot.ui.settings_dialog import OmniShotSettingsDialog
-        cfg = OmniShotConfig()
-        dlg = OmniShotSettingsDialog(config=cfg)
-        
-        # Test editing save location
-        dlg.txt_save_dir.setText("/home/test/Screenshots")
-        dlg.txt_template.setText("Test_%Y%m%d.png")
-        dlg.key_launch.setKeySequence("Meta+Shift+S")
-        dlg.key_scrolling.setKeySequence("Meta+Shift+C")
-        dlg.spin_scroll_step.setValue(140)
-        dlg._save_and_apply()
+        from omnishot.core.config import CONFIG_FILE
+        saved_bytes = CONFIG_FILE.read_bytes() if CONFIG_FILE.exists() else None
+        try:
+            cfg = OmniShotConfig()
+            dlg = OmniShotSettingsDialog(config=cfg)
+            
+            # Test editing save location
+            dlg.txt_save_dir.setText("/home/test/Screenshots")
+            dlg.txt_template.setText("Test_%Y%m%d.png")
+            dlg.key_launch.setKeySequence("Meta+Shift+S")
+            dlg.key_scrolling.setKeySequence("Meta+Shift+C")
+            dlg.spin_scroll_step.setValue(140)
+            dlg._save_and_apply()
 
-        self.assertEqual(cfg.save_directory, "/home/test/Screenshots")
-        self.assertEqual(cfg.filename_template, "Test_%Y%m%d.png")
-        self.assertEqual(cfg.shortcut_scrolling, "Meta+Shift+C")
-        self.assertEqual(cfg.scroll_step_pixels, 140)
-        # Verify "Open in Dolphin" button is completely removed
-        self.assertFalse(hasattr(dlg, "btn_open_dolphin"), "Open in Dolphin button should be removed")
-        dlg.close()
+            self.assertEqual(cfg.save_directory, "/home/test/Screenshots")
+            self.assertEqual(cfg.filename_template, "Test_%Y%m%d.png")
+            self.assertEqual(cfg.shortcut_scrolling, "Meta+Shift+C")
+            self.assertEqual(cfg.scroll_step_pixels, 140)
+            # Verify "Open in Dolphin" button is completely removed
+            self.assertFalse(hasattr(dlg, "btn_open_dolphin"), "Open in Dolphin button should be removed")
+            dlg.close()
+        finally:
+            if saved_bytes is not None:
+                CONFIG_FILE.write_bytes(saved_bytes)
 
     def test_11_main_window_resizability(self):
         """Verify the main annotation window is fully resizable down to compact viewports."""
