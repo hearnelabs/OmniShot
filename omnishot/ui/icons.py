@@ -21,9 +21,6 @@ def get_tool_icon(tool_name: str) -> QIcon:
     # Check theme first for standard desktop icons
     theme_map = {
         "pointer": "edit-select",
-        "copy": "edit-copy",
-        "save": "document-save",
-        "save_as": "document-save-as",
         "crop": "transform-crop",
         "dropper": "color-picker",
     }
@@ -132,6 +129,30 @@ def get_tool_icon(tool_name: str) -> QIcon:
         font = QFont("Noto Sans", 17, QFont.Weight.Bold)
         p.setFont(font)
         p.drawText(QRectF(0, 0, 32, 32), Qt.AlignmentFlag.AlignCenter, "T")
+
+    elif tool_name == "copy":
+        p.setPen(QPen(QColor("#3daee9"), 1.8))
+        p.setBrush(QBrush(QColor(61, 174, 233, 40)))
+        p.drawRoundedRect(QRectF(11, 6, 15, 18), 2, 2)
+        p.setPen(QPen(QColor("#ffffff"), 1.8))
+        p.setBrush(QBrush(QColor(255, 255, 255, 30)))
+        p.drawRoundedRect(QRectF(6, 10, 15, 18), 2, 2)
+
+    elif tool_name in ("save", "quick_save"):
+        p.setPen(QPen(QColor("#3daee9"), 1.8))
+        p.setBrush(QBrush(QColor(61, 174, 233, 35)))
+        p.drawRoundedRect(QRectF(5, 5, 22, 22), 2, 2)
+        p.fillRect(QRectF(9, 5, 14, 7), QColor("#ffffff"))
+        p.fillRect(QRectF(11, 7, 3, 4), QColor("#121519"))
+        p.fillRect(QRectF(8, 16, 16, 10), QColor("#ffffff"))
+
+    elif tool_name == "save_as":
+        p.setPen(QPen(QColor("#3daee9"), 1.8))
+        p.setBrush(QBrush(QColor(61, 174, 233, 35)))
+        p.drawRoundedRect(QRectF(5, 5, 20, 20), 2, 2)
+        p.fillRect(QRectF(8, 5, 12, 6), QColor("#ffffff"))
+        p.setPen(QPen(QColor("#00f0ff"), 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawLine(QPointF(17, 26), QPointF(27, 16))
 
     elif tool_name in ("scrolling_capture", "scroll"):
         # Glowing emerald scroll page

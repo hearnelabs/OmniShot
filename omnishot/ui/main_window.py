@@ -103,17 +103,17 @@ class RibbonGroup(QFrame):
         self.setObjectName("ribbonGroup")
 
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(4, 4, 4, 3)
-        self.main_layout.setSpacing(2)
+        self.main_layout.setContentsMargins(3, 2, 3, 2)
+        self.main_layout.setSpacing(1)
 
         self.btn_layout = QHBoxLayout()
         self.btn_layout.setContentsMargins(0, 0, 0, 0)
-        self.btn_layout.setSpacing(3)
+        self.btn_layout.setSpacing(2)
         self.main_layout.addLayout(self.btn_layout)
 
         self.lbl_title = QLabel(title, self)
         self.lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_title.setStyleSheet("color: #7f8c8d; font-size: 10px; font-weight: bold; text-transform: uppercase; margin-top: 1px;")
+        self.lbl_title.setStyleSheet("color: #7f8c8d; font-size: 9px; font-weight: bold; text-transform: uppercase; margin-top: 1px;")
         self.main_layout.addWidget(self.lbl_title)
 
     def add_widget(self, widget: QWidget):
@@ -331,6 +331,46 @@ class PropertiesSidebar(QScrollArea):
         self.opacityChanged.emit(val)
 
 
+class ViewportContainer(QWidget):
+    """Container holding the scrollable canvas and anchoring the floating bottom action pill."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.action_pill: Optional[QWidget] = None
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(0)
+
+    def set_scroll_area(self, scroll_area: QScrollArea):
+        self._layout.addWidget(scroll_area)
+
+    def set_action_pill(self, pill: QWidget):
+        self.action_pill = pill
+        pill.setParent(self)
+        self.reposition_pill()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.reposition_pill()
+
+    def reposition_pill(self):
+        if not self.action_pill:
+            return
+        pill_hint = self.action_pill.sizeHint()
+        pw = pill_hint.width()
+        ph = pill_hint.height()
+        vw = self.width()
+        vh = self.height()
+        if vw <= 10 or vh <= 10:
+            return
+
+        actual_w = min(pw, max(180, vw - 24))
+        actual_h = ph
+        px = max(12, (vw - actual_w) // 2)
+        py = max(12, vh - actual_h - 22)
+        self.action_pill.setGeometry(px, py, actual_w, actual_h)
+        self.action_pill.raise_()
+
+
 class OmniShotMainWindow(QMainWindow):
     requestCapture = Signal(str) # "region", "scroll_auto", "scroll_manual", "fullscreen", "window"
 
@@ -370,31 +410,19 @@ class OmniShotMainWindow(QMainWindow):
         self.scroll_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.scroll_area.setWidget(self.canvas)
 
-        # 2. Top Categorized Ribbon Bar (scrollable horizontally so window can be freely resized to any width)
-        self.ribbon_bar = self._create_ribbon_bar()
-        self.ribbon_scroll = QScrollArea(self)
-        self.ribbon_scroll.setObjectName("ribbonScrollArea")
-        self.ribbon_scroll.setWidgetResizable(True)
-        self.ribbon_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.ribbon_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.ribbon_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.ribbon_scroll.setFixedHeight(68)
-        self.ribbon_scroll.setWidget(self.ribbon_bar)
-        main_vbox.addWidget(self.ribbon_scroll)
+        # 2. Top Header Bar: Tools Ribbon (Scrollable Left) + Fixed Utilities (Pinned Right)
+        top_header = self._create_top_header()
+        main_vbox.addWidget(top_header)
 
-        # 3. Main Workspace Split: Canvas Area (Left) + Properties Sidebar (Right)
+        # 3. Main Workspace Split: Viewport (Left) + Properties Sidebar (Right)
         workspace = QWidget(self)
         ws_layout = QHBoxLayout(workspace)
         ws_layout.setContentsMargins(0, 0, 0, 0)
         ws_layout.setSpacing(0)
 
         # Viewport frame with floating pills
-        self.viewport_container = QWidget(self)
-        vp_layout = QVBoxLayout(self.viewport_container)
-        vp_layout.setContentsMargins(0, 0, 0, 0)
-        vp_layout.setSpacing(0)
-        vp_layout.addWidget(self.scroll_area)
-
+        self.viewport_container = ViewportContainer(self)
+        self.viewport_container.set_scroll_area(self.scroll_area)
         ws_layout.addWidget(self.viewport_container, 1)
 
         # Properties Sidebar (Right)
@@ -411,16 +439,81 @@ class OmniShotMainWindow(QMainWindow):
 
         main_vbox.addWidget(workspace, 1)
 
-        # 3. Bottom Floating Action Pill (OmniShot signature capsule)
+        # 4. Bottom Floating Action Pill (OmniShot signature capsule)
         self._create_bottom_action_pill()
+        self.viewport_container.set_action_pill(self.action_pill)
+
+    def _create_top_header(self) -> QFrame:
+        """Top bar with horizontal scrollable tools ribbon on left and fixed utility controls on right."""
+        header = QFrame(self)
+        header.setObjectName("topHeaderFrame")
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(0, 0, 8, 0)
+        layout.setSpacing(4)
+
+        # Left scrollable tool ribbon
+        self.ribbon_bar = self._create_ribbon_bar()
+        self.ribbon_scroll = QScrollArea(self)
+        self.ribbon_scroll.setObjectName("ribbonScrollArea")
+        self.ribbon_scroll.setWidgetResizable(True)
+        self.ribbon_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.ribbon_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.ribbon_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.ribbon_scroll.setFixedHeight(72)
+        self.ribbon_scroll.setWidget(self.ribbon_bar)
+        layout.addWidget(self.ribbon_scroll, 1)
+
+        # Vertical separator
+        sep = QFrame(header)
+        sep.setObjectName("groupDivider")
+        sep.setFrameShape(QFrame.Shape.VLine)
+        layout.addWidget(sep)
+
+        # Fixed right utility bar: Undo, Redo, Sidebar Toggle, Settings
+        self.utility_bar = QFrame(header)
+        self.utility_bar.setObjectName("utilityBar")
+        util_layout = QHBoxLayout(self.utility_bar)
+        util_layout.setContentsMargins(4, 6, 4, 6)
+        util_layout.setSpacing(4)
+
+        btn_undo = QToolButton(self.utility_bar)
+        btn_undo.setText("↩")
+        btn_undo.setToolTip("Undo (Ctrl+Z)")
+        btn_undo.setFixedSize(34, 34)
+        btn_undo.clicked.connect(self.canvas.undo)
+        util_layout.addWidget(btn_undo)
+
+        btn_redo = QToolButton(self.utility_bar)
+        btn_redo.setText("↪")
+        btn_redo.setToolTip("Redo (Ctrl+Y)")
+        btn_redo.setFixedSize(34, 34)
+        btn_redo.clicked.connect(self.canvas.redo)
+        util_layout.addWidget(btn_redo)
+
+        btn_toggle_side = QToolButton(self.utility_bar)
+        btn_toggle_side.setText("🎨")
+        btn_toggle_side.setToolTip("Toggle Color Palette & Properties Sidebar")
+        btn_toggle_side.setFixedSize(34, 34)
+        btn_toggle_side.clicked.connect(self._toggle_sidebar)
+        util_layout.addWidget(btn_toggle_side)
+
+        btn_settings = QToolButton(self.utility_bar)
+        btn_settings.setText("⚙")
+        btn_settings.setToolTip("Configure OmniShot Settings & Hotkeys (Ctrl+,)")
+        btn_settings.setFixedSize(34, 34)
+        btn_settings.clicked.connect(self.open_settings)
+        util_layout.addWidget(btn_settings)
+
+        layout.addWidget(self.utility_bar, 0)
+        return header
 
     def _create_ribbon_bar(self) -> QFrame:
-        """Categorized Ribbon with Drawing, Shapes, Redact, Badges, Output sections matching Mockup 2."""
+        """Categorized Ribbon with Drawing, Shapes, Redact, Badges, Output sections."""
         ribbon = QFrame(self)
         ribbon.setObjectName("ribbonBar")
         layout = QHBoxLayout(ribbon)
-        layout.setContentsMargins(8, 6, 8, 4)
-        layout.setSpacing(6)
+        layout.setContentsMargins(6, 4, 6, 4)
+        layout.setSpacing(4)
 
         self.tool_button_group = QButtonGroup(self)
         self.tool_button_group.setExclusive(True)
@@ -430,9 +523,9 @@ class OmniShotMainWindow(QMainWindow):
             btn.setProperty("class", "ribbonBtn")
             btn.setText(label)
             btn.setIcon(get_tool_icon(icon_name))
-            btn.setIconSize(QSize(22, 22))
+            btn.setIconSize(QSize(20, 20))
             btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-            btn.setFixedSize(60, 56)
+            btn.setFixedSize(58, 46)
             btn.setCheckable(True)
             btn.setToolTip(tooltip)
             if is_default:
@@ -489,9 +582,9 @@ class OmniShotMainWindow(QMainWindow):
         btn_scroll.setObjectName("scrollingCaptureRibbonBtn")
         btn_scroll.setText("Scroll")
         btn_scroll.setIcon(get_tool_icon("scrolling_capture"))
-        btn_scroll.setIconSize(QSize(22, 22))
+        btn_scroll.setIconSize(QSize(20, 20))
         btn_scroll.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-        btn_scroll.setFixedSize(58, 56)
+        btn_scroll.setFixedSize(50, 46)
         btn_scroll.setToolTip("Start Wayland Scrolling Capture")
         btn_scroll.clicked.connect(lambda: self.requestCapture.emit("scroll_auto"))
         grp_output.add_widget(btn_scroll)
@@ -500,9 +593,9 @@ class OmniShotMainWindow(QMainWindow):
         btn_copy.setProperty("class", "ribbonBtn")
         btn_copy.setText("Copy")
         btn_copy.setIcon(get_tool_icon("copy"))
-        btn_copy.setIconSize(QSize(22, 22))
+        btn_copy.setIconSize(QSize(20, 20))
         btn_copy.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-        btn_copy.setFixedSize(54, 56)
+        btn_copy.setFixedSize(46, 46)
         btn_copy.setToolTip("Copy to Clipboard (Ctrl+C)")
         btn_copy.clicked.connect(self.copy_to_clipboard)
         grp_output.add_widget(btn_copy)
@@ -511,9 +604,9 @@ class OmniShotMainWindow(QMainWindow):
         btn_save.setProperty("class", "ribbonBtn")
         btn_save.setText("Save")
         btn_save.setIcon(get_tool_icon("save"))
-        btn_save.setIconSize(QSize(22, 22))
+        btn_save.setIconSize(QSize(20, 20))
         btn_save.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-        btn_save.setFixedSize(52, 56)
+        btn_save.setFixedSize(46, 46)
         btn_save.setToolTip("Save Image (Ctrl+S)")
         btn_save.clicked.connect(self.quick_save)
         grp_output.add_widget(btn_save)
@@ -522,45 +615,14 @@ class OmniShotMainWindow(QMainWindow):
         btn_ocr.setProperty("class", "ribbonBtn")
         btn_ocr.setText("OCR")
         btn_ocr.setIcon(get_tool_icon("ocr"))
-        btn_ocr.setIconSize(QSize(22, 22))
+        btn_ocr.setIconSize(QSize(20, 20))
         btn_ocr.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-        btn_ocr.setFixedSize(52, 56)
+        btn_ocr.setFixedSize(46, 46)
         btn_ocr.setToolTip("Extract Text via OCR")
         btn_ocr.clicked.connect(self.extract_ocr_text)
         grp_output.add_widget(btn_ocr)
 
         layout.addWidget(grp_output)
-        layout.addStretch()
-
-        # Far right: Undo / Redo / Sidebar Toggle
-        btn_undo = QToolButton(ribbon)
-        btn_undo.setText("↩")
-        btn_undo.setToolTip("Undo (Ctrl+Z)")
-        btn_undo.setFixedSize(32, 32)
-        btn_undo.clicked.connect(self.canvas.undo)
-        layout.addWidget(btn_undo)
-
-        btn_redo = QToolButton(ribbon)
-        btn_redo.setText("↪")
-        btn_redo.setToolTip("Redo (Ctrl+Y)")
-        btn_redo.setFixedSize(32, 32)
-        btn_redo.clicked.connect(self.canvas.redo)
-        layout.addWidget(btn_redo)
-
-        btn_toggle_side = QToolButton(ribbon)
-        btn_toggle_side.setText("🎨")
-        btn_toggle_side.setToolTip("Toggle Color Palette & Properties Sidebar")
-        btn_toggle_side.setFixedSize(32, 32)
-        btn_toggle_side.clicked.connect(self._toggle_sidebar)
-        layout.addWidget(btn_toggle_side)
-
-        btn_settings = QToolButton(ribbon)
-        btn_settings.setText("⚙")
-        btn_settings.setToolTip("Configure OmniShot Settings & Hotkeys (Ctrl+,)")
-        btn_settings.setFixedSize(32, 32)
-        btn_settings.clicked.connect(self.open_settings)
-        layout.addWidget(btn_settings)
-
         return ribbon
 
     def _create_bottom_action_pill(self):
@@ -569,11 +631,11 @@ class OmniShotMainWindow(QMainWindow):
         self.action_pill.setObjectName("bottomActionPill")
 
         layout = QHBoxLayout(self.action_pill)
-        layout.setContentsMargins(10, 4, 10, 4)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 5, 10, 5)
+        layout.setSpacing(5)
 
         # 1. Zoom Dropdown Button
-        self.btn_zoom = QToolButton(self)
+        self.btn_zoom = QToolButton(self.action_pill)
         self.btn_zoom.setObjectName("pillActionBtn")
         self.btn_zoom.setText("🔍 100% ▾")
         self.btn_zoom.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
@@ -587,73 +649,84 @@ class OmniShotMainWindow(QMainWindow):
         layout.addWidget(self.btn_zoom)
 
         # 2. Big Green Finish Play/Check Button
-        self.btn_finish = QPushButton("▶", self)
+        self.btn_finish = QPushButton("▶", self.action_pill)
         self.btn_finish.setObjectName("finishGreenBtn")
-        self.btn_finish.setToolTip("Finish & Copy to Clipboard")
+        self.btn_finish.setToolTip("Finish & Copy to Clipboard (Enter)")
+        self.btn_finish.setFixedSize(30, 30)
         self.btn_finish.clicked.connect(self._finish_and_copy)
         layout.addWidget(self.btn_finish)
 
         # 3. Red Cancel Button
-        self.btn_cancel = QPushButton("✕", self)
+        self.btn_cancel = QPushButton("✕", self.action_pill)
         self.btn_cancel.setObjectName("cancelRedBtn")
-        self.btn_cancel.setToolTip("Discard / Close")
+        self.btn_cancel.setToolTip("Discard / Close (Esc)")
+        self.btn_cancel.setFixedSize(30, 30)
         self.btn_cancel.clicked.connect(self.close)
         layout.addWidget(self.btn_cancel)
 
+        # Separator line
+        sep = QFrame(self.action_pill)
+        sep.setObjectName("groupDivider")
+        sep.setFrameShape(QFrame.Shape.VLine)
+        sep.setFixedHeight(22)
+        layout.addWidget(sep)
+
         # 4. Standard action icons
-        self.btn_copy = QToolButton(self)
+        self.btn_copy = QToolButton(self.action_pill)
         self.btn_copy.setObjectName("pillActionBtn")
         self.btn_copy.setIcon(get_tool_icon("copy"))
+        self.btn_copy.setIconSize(QSize(18, 18))
+        self.btn_copy.setFixedSize(30, 30)
         self.btn_copy.setToolTip("Copy to Clipboard (Ctrl+C)")
         self.btn_copy.clicked.connect(self.copy_to_clipboard)
         layout.addWidget(self.btn_copy)
 
-        self.btn_save = QToolButton(self)
+        self.btn_save = QToolButton(self.action_pill)
         self.btn_save.setObjectName("pillActionBtn")
         self.btn_save.setIcon(get_tool_icon("save"))
+        self.btn_save.setIconSize(QSize(18, 18))
+        self.btn_save.setFixedSize(30, 30)
         self.btn_save.setToolTip("Quick Save (Ctrl+S)")
         self.btn_save.clicked.connect(self.quick_save)
         layout.addWidget(self.btn_save)
 
-        self.btn_save_as = QToolButton(self)
+        self.btn_save_as = QToolButton(self.action_pill)
         self.btn_save_as.setObjectName("pillActionBtn")
         self.btn_save_as.setIcon(get_tool_icon("save_as"))
+        self.btn_save_as.setIconSize(QSize(18, 18))
+        self.btn_save_as.setFixedSize(30, 30)
         self.btn_save_as.setToolTip("Save As... (Ctrl+Shift+S)")
         self.btn_save_as.clicked.connect(self.save_as)
         layout.addWidget(self.btn_save_as)
 
-        self.btn_ocr = QToolButton(self)
+        self.btn_ocr = QToolButton(self.action_pill)
         self.btn_ocr.setObjectName("pillActionBtn")
         self.btn_ocr.setIcon(get_tool_icon("ocr"))
+        self.btn_ocr.setIconSize(QSize(18, 18))
+        self.btn_ocr.setFixedSize(30, 30)
         self.btn_ocr.setToolTip("Extract Text (OCR)")
         self.btn_ocr.clicked.connect(self.extract_ocr_text)
         layout.addWidget(self.btn_ocr)
 
-        self.btn_pin = QToolButton(self)
+        self.btn_pin = QToolButton(self.action_pill)
         self.btn_pin.setObjectName("pillActionBtn")
         self.btn_pin.setText("📌")
+        self.btn_pin.setFixedSize(30, 30)
         self.btn_pin.setToolTip("Pin to Screen (Always on top)")
         self.btn_pin.clicked.connect(self._toggle_pin)
         layout.addWidget(self.btn_pin)
-
-        self.btn_settings = QToolButton(self)
-        self.btn_settings.setObjectName("pillActionBtn")
-        self.btn_settings.setText("⚙")
-        self.btn_settings.setToolTip("Settings & Hotkeys (Ctrl+,)")
-        self.btn_settings.clicked.connect(self.open_settings)
-        layout.addWidget(self.btn_settings)
 
         self.canvas.zoomChanged.connect(self._on_zoom_changed)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.action_pill.adjustSize()
-        pw = min(self.action_pill.width(), max(100, self.viewport_container.width() - 20))
-        ph = self.action_pill.height()
-        px = max(10, (self.viewport_container.width() - pw) // 2)
-        py = max(10, self.viewport_container.height() - ph - 20)
-        self.action_pill.setGeometry(px, py, pw, ph)
-        self.action_pill.raise_()
+        if hasattr(self, "viewport_container"):
+            self.viewport_container.reposition_pill()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if hasattr(self, "viewport_container"):
+            QTimer.singleShot(0, self.viewport_container.reposition_pill)
 
     def _setup_shortcuts(self):
         QShortcut(QKeySequence("Ctrl+C"), self, self.copy_to_clipboard)
@@ -678,6 +751,8 @@ class OmniShotMainWindow(QMainWindow):
 
     def _toggle_sidebar(self):
         self.sidebar.setVisible(not self.sidebar.isVisible())
+        if hasattr(self, "viewport_container"):
+            QTimer.singleShot(0, self.viewport_container.reposition_pill)
 
     def _on_tool_selected(self, tool_type: str):
         self.canvas.set_active_tool(tool_type)

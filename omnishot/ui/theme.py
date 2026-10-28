@@ -20,9 +20,47 @@ QWidget {
 }
 
 /* Primary Top Categorized Ribbon Bar */
-QFrame#ribbonBar {
+QFrame#topHeaderFrame {
     background-color: #1b1e24;
     border-bottom: 1.5px solid #2a2e36;
+}
+
+QFrame#ribbonBar {
+    background-color: transparent;
+    border: none;
+}
+
+QFrame#utilityBar {
+    background-color: transparent;
+    border: none;
+}
+
+QScrollArea#ribbonScrollArea {
+    background: transparent;
+    border: none;
+}
+
+QScrollArea#ribbonScrollArea QScrollBar:horizontal {
+    height: 4px;
+    background: transparent;
+    border: none;
+    margin: 0px;
+}
+
+QScrollArea#ribbonScrollArea QScrollBar::handle:horizontal {
+    background: rgba(61, 174, 233, 0.35);
+    border-radius: 2px;
+    min-width: 24px;
+}
+
+QScrollArea#ribbonScrollArea QScrollBar::handle:horizontal:hover {
+    background: #3daee9;
+}
+
+QScrollArea#ribbonScrollArea QScrollBar::add-line:horizontal,
+QScrollArea#ribbonScrollArea QScrollBar::sub-line:horizontal {
+    width: 0px;
+    background: none;
 }
 
 /* Ribbon Groups */
@@ -36,7 +74,7 @@ QFrame#groupDivider {
     background-color: rgba(255, 255, 255, 0.12);
     width: 1px;
     max-width: 1px;
-    margin: 8px 6px;
+    margin: 6px 4px;
 }
 
 /* Ribbon Tool Buttons */
@@ -209,9 +247,9 @@ QToolButton#pillActionBtn {
     background-color: rgba(255, 255, 255, 0.08);
     color: #d8dce2;
     border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 16px;
-    padding: 4px 10px;
-    font-size: 12px;
+    border-radius: 8px;
+    padding: 3px 6px;
+    font-size: 11px;
     font-weight: 500;
 }
 
