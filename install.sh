@@ -107,11 +107,23 @@ sc.mkdir(parents=True, exist_ok=True)
 shutil.copyfile('omnishot.svg', sc / 'omnishot.svg')
 "
 
+# Also copy directly into active icon theme if custom theme is installed
+if command -v kreadconfig6 &>/dev/null; then
+    ACTIVE_THEME=$(kreadconfig6 --file kdeglobals --group Icons --key Theme || echo "")
+    if [ -n "$ACTIVE_THEME" ] && [ -d "$HOME/.local/share/icons/$ACTIVE_THEME" ]; then
+        mkdir -p "$HOME/.local/share/icons/$ACTIVE_THEME/64x64/apps"
+        mkdir -p "$HOME/.local/share/icons/$ACTIVE_THEME/24x24/apps"
+        cp "omnishot.svg" "$HOME/.local/share/icons/$ACTIVE_THEME/64x64/apps/omnishot.svg"
+        cp "$HOME/.local/share/icons/hicolor/64x64/apps/omnishot.png" "$HOME/.local/share/icons/$ACTIVE_THEME/64x64/apps/omnishot.png"
+        cp "$HOME/.local/share/icons/hicolor/24x24/apps/omnishot.png" "$HOME/.local/share/icons/$ACTIVE_THEME/24x24/apps/omnishot.png"
+    fi
+fi
+
 # Create launcher symlink in ~/.local/bin
 ln -sf "$SCRIPT_DIR/bin/omnishot" "$HOME/.local/bin/omnishot"
 
-# 5. Configure KDE Plasma 6 Global Shortcuts
-echo "[5/6] Registering KDE Plasma 6 Shortcuts..."
+# 5. Configure KDE Plasma 6 Global Shortcuts & Refresh Shell
+echo "[5/6] Registering KDE Plasma 6 Shortcuts and refreshing icon caches..."
 if command -v kwriteconfig6 &>/dev/null; then
     # Standard OmniShot hotkey: Meta+Shift+S (Spectacle default)
     kwriteconfig6 --file kglobalshortcutsrc --group "omnishot.desktop" --key "_k_friendly_name" "OmniShot"
@@ -125,8 +137,17 @@ if command -v gtk-update-icon-cache &>/dev/null; then
     gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" &>/dev/null || true
 fi
 
+# Purge Plasma desktop icon and pixmap caches
+rm -f "$HOME/.cache/plasma_theme_"*.kcache 2>/dev/null || true
+rm -rf "$HOME/.cache/plasmashell/qmlcache" 2>/dev/null || true
+
 if command -v kbuildsycoca6 &>/dev/null; then
     kbuildsycoca6 --noincremental &>/dev/null || true
+fi
+
+# Reload Plasma Shell if active so launcher icons update immediately without logout
+if systemctl --user is-active --quiet plasma-plasmashell.service 2>/dev/null; then
+    systemctl --user restart plasma-plasmashell.service &>/dev/null || true
 fi
 
 # 6. Verification
