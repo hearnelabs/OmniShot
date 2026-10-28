@@ -33,6 +33,7 @@ from .canvas import (
 )
 from .icons import get_tool_icon
 from .theme import OMNISHOT_DARK_QSS
+from .settings_dialog import OmniShotSettingsDialog
 
 
 class OCRDialog(QDialog):
@@ -538,6 +539,13 @@ class OmniShotMainWindow(QMainWindow):
         btn_toggle_side.clicked.connect(self._toggle_sidebar)
         layout.addWidget(btn_toggle_side)
 
+        btn_settings = QToolButton(ribbon)
+        btn_settings.setText("⚙")
+        btn_settings.setToolTip("Configure OmniShot Settings & Hotkeys (Ctrl+,)")
+        btn_settings.setFixedSize(32, 32)
+        btn_settings.clicked.connect(self.open_settings)
+        layout.addWidget(btn_settings)
+
         return ribbon
 
     def _create_bottom_action_pill(self):
@@ -613,6 +621,13 @@ class OmniShotMainWindow(QMainWindow):
         self.btn_pin.clicked.connect(self._toggle_pin)
         layout.addWidget(self.btn_pin)
 
+        self.btn_settings = QToolButton(self)
+        self.btn_settings.setObjectName("pillActionBtn")
+        self.btn_settings.setText("⚙")
+        self.btn_settings.setToolTip("Settings & Hotkeys (Ctrl+,)")
+        self.btn_settings.clicked.connect(self.open_settings)
+        layout.addWidget(self.btn_settings)
+
         self.canvas.zoomChanged.connect(self._on_zoom_changed)
 
     def resizeEvent(self, event):
@@ -636,6 +651,15 @@ class OmniShotMainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+-"), self, self.canvas.zoom_out)
         QShortcut(QKeySequence("Ctrl+0"), self, self._zoom_fit)
         QShortcut(QKeySequence("Ctrl+1"), self, self.canvas.zoom_reset)
+        QShortcut(QKeySequence("Ctrl+,"), self, self.open_settings)
+
+    def open_settings(self):
+        dlg = OmniShotSettingsDialog(config=self.config, parent=self)
+        dlg.settingsSaved.connect(self._on_settings_saved)
+        dlg.exec()
+
+    def _on_settings_saved(self):
+        self.config = OmniShotConfig.load()
 
     def _toggle_sidebar(self):
         self.sidebar.setVisible(not self.sidebar.isVisible())
@@ -654,23 +678,22 @@ class OmniShotMainWindow(QMainWindow):
             elif isinstance(self.canvas.selected_annotation, SpeechBalloonAnnotation):
                 self.canvas.selected_annotation.stroke_color = color
             self.canvas.update()
+            self.canvas.imageChanged.emit()
 
     def _on_thickness_changed(self, val: int):
         self.canvas.current_stroke_width = val
         if self.canvas.selected_annotation:
             self.canvas.selected_annotation.stroke_width = val
             self.canvas.update()
+            self.canvas.imageChanged.emit()
 
     def _on_opacity_changed(self, val: int):
-        alpha = int(val * 255 / 100)
-        c = QColor(self.canvas.current_stroke_color)
-        c.setAlpha(alpha)
-        self.canvas.current_stroke_color = c
+        opacity_float = max(0.01, min(1.0, val / 100.0))
+        self.canvas.current_opacity = opacity_float
         if self.canvas.selected_annotation:
-            sc = QColor(self.canvas.selected_annotation.stroke_color)
-            sc.setAlpha(alpha)
-            self.canvas.selected_annotation.stroke_color = sc
+            self.canvas.selected_annotation.opacity = opacity_float
             self.canvas.update()
+            self.canvas.imageChanged.emit()
 
     def _on_font_size_changed(self, val: int):
         self.canvas.current_font_size = val
@@ -680,41 +703,68 @@ class OmniShotMainWindow(QMainWindow):
             if isinstance(self.canvas.selected_annotation, StepBadgeAnnotation):
                 self.canvas.selected_annotation.radius = float(val)
             self.canvas.update()
+            self.canvas.imageChanged.emit()
 
     def _on_bold_toggled(self, checked: bool):
         self.canvas.is_bold = checked
         if self.canvas.selected_annotation and isinstance(self.canvas.selected_annotation, TextAnnotation):
             self.canvas.selected_annotation.is_bold = checked
             self.canvas.update()
+            self.canvas.imageChanged.emit()
 
     def _on_italic_toggled(self, checked: bool):
         self.canvas.is_italic = checked
         if self.canvas.selected_annotation and isinstance(self.canvas.selected_annotation, TextAnnotation):
             self.canvas.selected_annotation.is_italic = checked
             self.canvas.update()
+            self.canvas.imageChanged.emit()
 
     def _on_underline_toggled(self, checked: bool):
         self.canvas.is_underline = checked
         if self.canvas.selected_annotation and isinstance(self.canvas.selected_annotation, TextAnnotation):
             self.canvas.selected_annotation.is_underline = checked
             self.canvas.update()
+            self.canvas.imageChanged.emit()
 
     def _on_shadow_toggled(self, checked: bool):
         self.canvas.has_shadow = checked
         if self.canvas.selected_annotation:
             self.canvas.selected_annotation.has_shadow = checked
             self.canvas.update()
+            self.canvas.imageChanged.emit()
 
     def _on_annotation_selection_changed(self, ann: Optional[BaseAnnotation]):
         if ann:
+            opac_pct = int(round(getattr(ann, "opacity", 1.0) * 100))
+            self.sidebar.slider_opac.blockSignals(True)
+            self.sidebar.slider_opac.setValue(opac_pct)
+            self.sidebar.lbl_opac_val.setText(f"{opac_pct}%")
+            self.sidebar.slider_opac.blockSignals(False)
+
+            self.sidebar.slider_thick.blockSignals(True)
             self.sidebar.slider_thick.setValue(ann.stroke_width)
+            self.sidebar.lbl_thick_val.setText(f"{ann.stroke_width} px")
+            self.sidebar.slider_thick.blockSignals(False)
+
             self.sidebar.set_current_color(QColor(ann.stroke_color))
+
+            self.sidebar.btn_shadow.blockSignals(True)
             self.sidebar.btn_shadow.setChecked(ann.has_shadow)
+            self.sidebar.btn_shadow.blockSignals(False)
+
             if isinstance(ann, TextAnnotation):
+                self.sidebar.spin_font.blockSignals(True)
                 self.sidebar.spin_font.setValue(ann.font_size)
+                self.sidebar.spin_font.blockSignals(False)
+                self.sidebar.btn_bold.blockSignals(True)
                 self.sidebar.btn_bold.setChecked(ann.is_bold)
+                self.sidebar.btn_bold.blockSignals(False)
+                self.sidebar.btn_italic.blockSignals(True)
                 self.sidebar.btn_italic.setChecked(ann.is_italic)
+                self.sidebar.btn_italic.blockSignals(False)
+                self.sidebar.btn_underline.blockSignals(True)
                 self.sidebar.btn_underline.setChecked(ann.is_underline)
+                self.sidebar.btn_underline.blockSignals(False)
 
     def _on_zoom_changed(self, zoom: float):
         self.btn_zoom.setText(f"🔍 {int(zoom * 100)}% ▾")

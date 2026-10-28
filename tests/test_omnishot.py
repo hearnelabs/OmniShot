@@ -179,6 +179,65 @@ class TestOmniShot(unittest.TestCase):
         self.assertEqual(overlay._selected_rect.width(), 200)
         overlay.close()
 
+    def test_09_opacity_modulations_and_selection_sync(self):
+        from PySide6.QtCore import QPointF, QRectF
+        from PySide6.QtGui import QColor
+        from omnishot.ui.canvas import AnnotationCanvas, FreehandAnnotation, TextAnnotation, StepBadgeAnnotation
+        from omnishot.ui.main_window import OmniShotMainWindow
+
+        canvas = AnnotationCanvas()
+        img = QImage(200, 200, QImage.Format.Format_ARGB32)
+        img.fill(QColor(255, 255, 255))
+        canvas.set_image(img)
+
+        hl = FreehandAnnotation(is_highlighter=True)
+        hl.add_point(QPointF(10, 10))
+        hl.add_point(QPointF(100, 100))
+        hl.opacity = 0.42
+        canvas.annotations.append(hl)
+
+        txt = TextAnnotation("Sample")
+        txt.rect = QRectF(10, 20, 80, 30)
+        txt.opacity = 0.75
+        canvas.annotations.append(txt)
+
+        win = OmniShotMainWindow()
+        win.set_captured_image(img)
+
+        # Test selecting highlighter syncs opacity slider to 42%
+        win.canvas.selected_annotation = hl
+        win._on_annotation_selection_changed(hl)
+        self.assertEqual(win.sidebar.slider_opac.value(), 42)
+        self.assertEqual(win.sidebar.lbl_opac_val.text(), "42%")
+
+        # Test changing slider updates selected annotation
+        win._on_opacity_changed(60)
+        self.assertAlmostEqual(hl.opacity, 0.60, places=2)
+
+        # Test changing color updates selected annotation
+        win._on_color_selected(QColor("#2ecc71"))
+        self.assertEqual(hl.stroke_color.name(), "#2ecc71")
+        win.close()
+
+    def test_10_settings_dialog_preferences_and_shortcuts(self):
+        from omnishot.ui.settings_dialog import OmniShotSettingsDialog
+        cfg = OmniShotConfig()
+        dlg = OmniShotSettingsDialog(config=cfg)
+        
+        # Test editing save location
+        dlg.txt_save_dir.setText("/home/test/Screenshots")
+        dlg.txt_template.setText("Test_%Y%m%d.png")
+        dlg.key_launch.setKeySequence("Meta+Shift+S")
+        dlg.key_scrolling.setKeySequence("Meta+Shift+C")
+        dlg.spin_scroll_step.setValue(140)
+        dlg._save_and_apply()
+
+        self.assertEqual(cfg.save_directory, "/home/test/Screenshots")
+        self.assertEqual(cfg.filename_template, "Test_%Y%m%d.png")
+        self.assertEqual(cfg.shortcut_scrolling, "Meta+Shift+C")
+        self.assertEqual(cfg.scroll_step_pixels, 140)
+        dlg.close()
+
 if __name__ == "__main__":
     unittest.main()
 

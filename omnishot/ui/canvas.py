@@ -60,6 +60,7 @@ class BaseAnnotation:
         self.stroke_color: QColor = QColor("#ff0000") # OmniShot default red
         self.fill_color: QColor = QColor(0, 0, 0, 0) # transparent by default
         self.stroke_width: int = 4
+        self.opacity: float = 1.0
         self.has_shadow: bool = True
         self.is_selected: bool = False
 
@@ -132,6 +133,7 @@ class BaseAnnotation:
             return
         r = self.normalized_rect()
         painter.save()
+        painter.setOpacity(1.0)
         
         # Dashed selection box
         pen = QPen(QColor(255, 255, 255), 1.5, Qt.PenStyle.DashLine)
@@ -162,6 +164,7 @@ class RectAnnotation(BaseAnnotation):
 
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setOpacity(self.opacity)
 
         if self.has_shadow:
             painter.setPen(QPen(QColor(0, 0, 0, 90), self.stroke_width))
@@ -196,6 +199,7 @@ class EllipseAnnotation(BaseAnnotation):
 
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setOpacity(self.opacity)
 
         if self.has_shadow:
             painter.setPen(QPen(QColor(0, 0, 0, 90), self.stroke_width))
@@ -247,6 +251,7 @@ class LineAnnotation(BaseAnnotation):
     def draw(self, painter: QPainter, base_image: Optional[QImage] = None):
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setOpacity(self.opacity)
 
         if self.has_shadow:
             painter.setPen(QPen(QColor(0, 0, 0, 90), self.stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
@@ -305,6 +310,7 @@ class ArrowAnnotation(BaseAnnotation):
 
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setOpacity(self.opacity)
 
         # Drop shadow
         if self.has_shadow:
@@ -371,11 +377,12 @@ class FreehandAnnotation(BaseAnnotation):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         if self.is_highlighter:
-            hl = QColor(self.stroke_qcolor)
-            hl.setAlpha(95)
-            pen = QPen(hl, self.stroke_width * 3.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.SquareCap, Qt.PenJoinStyle.BevelJoin)
+            # Scaled highlighter opacity (base 0.7 modulated by self.opacity)
+            painter.setOpacity(self.opacity * 0.7)
+            pen = QPen(self.stroke_qcolor, self.stroke_width * 3.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.SquareCap, Qt.PenJoinStyle.BevelJoin)
             painter.setPen(pen)
         else:
+            painter.setOpacity(self.opacity)
             if self.has_shadow:
                 painter.setPen(QPen(QColor(0, 0, 0, 80), self.stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
                 for i in range(len(self.points) - 1):
@@ -418,6 +425,7 @@ class TextAnnotation(BaseAnnotation):
 
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setOpacity(self.opacity)
 
         font = QFont(self.font_family, self.font_size)
         font.setBold(self.is_bold)
@@ -471,6 +479,7 @@ class SpeechBalloonAnnotation(BaseAnnotation):
 
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setOpacity(self.opacity)
 
         # Create speech bubble with pointing tail
         path = QPainterPath()
@@ -521,6 +530,7 @@ class StepBadgeAnnotation(BaseAnnotation):
         c = self.rect.center()
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setOpacity(self.opacity)
 
         # Drop shadow
         if self.has_shadow:
@@ -563,6 +573,8 @@ class RedactAnnotation(BaseAnnotation):
             return
 
         sub = base_image.copy(rx, ry, rw, rh)
+        painter.save()
+        painter.setOpacity(self.opacity)
         if self.is_pixelate:
             dw = max(1, rw // self.block_size)
             dh = max(1, rh // self.block_size)
@@ -576,6 +588,7 @@ class RedactAnnotation(BaseAnnotation):
             down = sub.scaled(dw, dh, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
             up = down.scaled(rw, rh, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
             painter.drawImage(rx, ry, up)
+        painter.restore()
 
 
 class MagnifyAnnotation(BaseAnnotation):
@@ -607,6 +620,7 @@ class MagnifyAnnotation(BaseAnnotation):
 
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setOpacity(self.opacity)
 
         if self.has_shadow:
             painter.fillRect(r.translated(3, 3), QColor(0, 0, 0, 90))
@@ -702,6 +716,7 @@ class AnnotationCanvas(QWidget):
         self.current_stroke_color: QColor = QColor("#ff0000") # OmniShot red
         self.current_fill_color: QColor = QColor(0, 0, 0, 0) # transparent
         self.current_stroke_width: int = 4
+        self.current_opacity: float = 1.0
         self.current_font_size: int = 24
         self.is_bold: bool = True
         self.is_italic: bool = False
@@ -1072,6 +1087,7 @@ class AnnotationCanvas(QWidget):
             ann.stroke_color = self.current_stroke_color
             ann.fill_color = self.current_fill_color
             ann.stroke_width = self.current_stroke_width
+            ann.opacity = self.current_opacity
             ann.has_shadow = self.has_shadow
 
         return ann

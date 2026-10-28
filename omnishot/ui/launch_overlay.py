@@ -126,6 +126,7 @@ class FloatingLaunchPill(QFrame):
     fullscreenCaptureTriggered = Signal()
     delayChanged = Signal(int) # delay in ms
     optionsChanged = Signal(dict)
+    settingsTriggered = Signal()
     cancelTriggered = Signal()
 
     def __init__(self, parent=None):
@@ -319,6 +320,11 @@ class FloatingLaunchPill(QFrame):
         self.action_copy_direct.toggled.connect(self._on_options_updated)
         menu.addAction(self.action_copy_direct)
 
+        menu.addSeparator()
+        self.action_settings = QAction("⚙️ Configure OmniShot Settings...", self)
+        self.action_settings.triggered.connect(self.settingsTriggered.emit)
+        menu.addAction(self.action_settings)
+
         self.btn_options.setMenu(menu)
 
     def _on_options_updated(self):
@@ -392,6 +398,7 @@ class SpectacleLaunchOverlay(QWidget):
         self.bottom_pill.regionModeSelected.connect(self._on_pill_region_selected)
         self.bottom_pill.windowCaptureTriggered.connect(self._on_pill_window_triggered)
         self.bottom_pill.fullscreenCaptureTriggered.connect(self._on_pill_fullscreen_triggered)
+        self.bottom_pill.settingsTriggered.connect(self._open_settings)
         self.bottom_pill.cancelTriggered.connect(self._on_cancel_requested)
 
         # 3. Selection micro-strip (attached to selection rect)
@@ -661,6 +668,11 @@ class SpectacleLaunchOverlay(QWidget):
     def _on_cancel_requested(self):
         self.close()
         self.overlayCancelled.emit()
+
+    def _open_settings(self):
+        from .settings_dialog import OmniShotSettingsDialog
+        dlg = OmniShotSettingsDialog(parent=self)
+        dlg.exec()
 
     def _confirm_snapshot(self):
         if self._selected_rect and not self._selected_rect.isEmpty():
