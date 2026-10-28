@@ -1,37 +1,125 @@
-# 📸 OmniShot
-> **The Next-Generation Screenshot & Scrolling Capture Suite for CachyOS & KDE Plasma 6 (Wayland)**
+<div align="center">
+  <img src="omnishot.svg" width="136" height="136" alt="OmniShot Logo" />
+  <h1>OmniShot</h1>
+  <p><strong>The Next-Generation Screenshot & Scrolling Capture Suite for KDE Plasma 6 (Wayland)</strong></p>
+  <p><em>Created by HearneLabs, inspired by Spectacle/ShareX, fuelled by caffeine ☕</em></p>
 
-OmniShot brings the one killer feature that **KDE Spectacle** has always been missing: **Pixel-Perfect Seamless Scrolling Capture**, built natively for **CachyOS**, **KDE Plasma 6.8+**, and **KWin Wayland**.
-
----
-
-## 🌟 Why OmniShot?
-
-KDE Spectacle is loved for its clean Plasma integration, annotation tools, and snappy workflow—but it cannot capture content beyond the screen viewport. 
-
-OmniShot was engineered from the ground up to solve this:
-1. **Flawless Scrolling Capture**: Automatically or manually scroll web pages, documents, long chat histories, terminals, and spreadsheets, stitching them with sub-millisecond C/AVX2 multi-strip correlation.
-2. **Native KWin Wayland Backend**: Direct pipe-based screencopy through `org.kde.KWin.ScreenShot2` (bypassing slow portal prompts and flicker).
-3. **Hardware-Level Virtual Scrolling**: Injects synthetic scroll wheel events via `/dev/uinput` directly into the Linux kernel input subsystem without requiring root/sudo passwords.
-4. **Spectacle-Grade Annotator**:
-   - ✏️ Pen & Translucent Highlighter
-   - ➡️ Smart Directional Arrows
-   - 🔲 Rectangles & ⭕ Ellipses
-   - 🔢 **Numbered Step Badges (1, 2, 3...)** with auto-increment
-   - 💧 **Privacy Blur & Pixelation** (hide passwords, emails, API keys)
-   - 🔤 Rich draggable Text annotations
-   - ✂️ Canvas Crop tool
-   - ↩️ Full Undo/Redo history stack
-5. **Integrated Tesseract OCR**: One-click text extraction from any capture or long scrolling document.
-6. **KDE Plasma 6 Breeze Theme**: Fully styled with native Breeze dark glass aesthetics and rounded geometry.
+  <p>
+    <a href="https://github.com/hearnelabs/OmniShot/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-GPL%20v3-blue.svg?style=flat-square" alt="License: GPLv3" /></a>
+    <img src="https://img.shields.io/badge/Platform-CachyOS%20%7C%20Arch%20Linux-emerald?style=flat-square&color=00e676" alt="Platform: CachyOS / Arch" />
+    <img src="https://img.shields.io/badge/Desktop-KDE%20Plasma%206%20%28Wayland%29-38bdf8?style=flat-square" alt="KDE Plasma 6 Wayland" />
+    <img src="https://img.shields.io/badge/Python-3.10%2B%20%7C%20PySide6-3776ab?style=flat-square" alt="Python 3.10+ / PySide6" />
+    <img src="https://img.shields.io/badge/Acceleration-Native%20C%20%2F%20SIMD-orange?style=flat-square" alt="Native C Acceleration" />
+  </p>
+</div>
 
 ---
 
-## 🚀 Quick Start
+## 🌟 Overview
 
-OmniShot is already installed in your `~/.local/bin` and system application menus.
+**OmniShot** is an ultra-fast, professional screenshot and continuous scrolling capture application engineered specifically for **CachyOS**, **Arch Linux**, and **KDE Plasma 6 (KWin Wayland)**.
 
-### Run via Terminal or KRunner (`Alt+Space`)
+It delivers the one killer feature that Linux desktop screenshot utilities have always lacked: **Pixel-Perfect Continuous Scrolling Capture**, combined with an extensive Spectacle & ShareX-grade vector annotation editor, single-click OCR text extraction, and seamless Wayland desktop integration.
+
+---
+
+## 📸 Screenshots
+
+### 1. In-Situ Floating Launch Bar
+*Minimalist floating capsule overlay with quick snip triggers, delay countdown, and direct scrolling capture prompt:*
+
+<div align="center">
+  <img src="assets/launch_overlay.png" width="85%" alt="OmniShot Launch Overlay" />
+</div>
+
+### 2. Annotation & Image Editor
+*Full-featured vector annotation suite with categorized tool ribbon, color swatches, adjustable opacity/stroke sliders, and pinned utility controls:*
+
+<div align="center">
+  <img src="assets/editor.png" width="85%" alt="OmniShot Image Editor" />
+</div>
+
+### 3. Real-Time Scrolling Capture HUD
+*Floating Wayland HUD with live height counter, frame tracker, and real-time expanding miniature thumbnail:*
+
+<div align="center">
+  <img src="assets/scrolling_hud.png" width="70%" alt="OmniShot Scrolling Capture HUD" />
+</div>
+
+---
+
+## ✨ Features
+
+- 📜 **Continuous Scrolling Capture (Auto & Manual)**:
+  - Capture entire web pages, long terminal outputs, chat conversations, code buffers, and PDF documents.
+  - Sub-millisecond C/AVX2 multi-strip correlation engine stitches slices seamlessly without vertical artifacts or seam lines.
+  - Floating status HUD with live pulsing recording indicator and dynamic expanding thumbnail preview.
+  - Automatic end-of-scroll detection when the page hits bottom.
+- 🖥️ **Direct KWin Wayland Backend**:
+  - Leverages `org.kde.KWin.ScreenShot2` pipe-based screencopy for zero-latency, high-speed captures.
+  - Preserves 1:1 hardware pixel resolution across High-DPI screens and fractional scaling (1.25x, 1.5x, 2.0x).
+- 🎮 **Hardware-Level Virtual Input (`/dev/uinput`)**:
+  - Injects synthetic mouse wheel and keyboard scroll events directly through the Linux input subsystem.
+  - Unprivileged access via systemd `uaccess` rules—no root/sudo password prompts during everyday usage.
+  - Graceful fallback to interactive manual scroll mode if virtual input is unavailable.
+- 🎨 **Spectacle & ShareX-Grade Annotation Suite**:
+  - **Drawing**: Freehand Pen & Translucent Highlighter (single-pass scratch buffer compositing preserves 100% text readability).
+  - **Geometric Shapes**: Rectangles, Rounded Rectangles, Ellipses, Straight Lines, and Directional Arrows.
+  - **Privacy Redaction**: Gaussian Blur and Checkered Pixelation Mosaic filters.
+  - **Sequential Badges**: Auto-incrementing step bubbles (`①`, `②`, `③`...) and Speech Balloons.
+  - **Typography**: Draggable rich text annotations with font sizing, drop shadow, bold, italic, and underline.
+  - **Canvas Tools**: Interactive cropping tool and full Undo (`Ctrl+Z`) / Redo (`Ctrl+Y`) history.
+- 🔍 **Integrated Tesseract OCR**:
+  - One-click optical character recognition instantly extracts text from any selection or scrolling document directly into your clipboard.
+- 📐 **Fully Resizable & Responsive Layout**:
+  - Window resizes cleanly down to compact viewports ($480 \times 360$) and up to multi-monitor 4K displays.
+  - Top header features a flexible scrollable tool ribbon on the left with pinned utility controls (`Undo`, `Redo`, `Palette Toggle`, `Settings`) anchored on the top-right.
+  - Floating bottom action capsule automatically centers in the viewport and anchors cleanly above the bottom edge.
+- ⚙️ **Settings & KDE Hotkey Integration**:
+  - Easily customize default save directory, filename templates (`OmniShot_%Y%m%d_%H%M%S.png`), scroll step increments, and auto-copy preferences.
+  - Configures global Plasma 6 shortcuts (`Meta+Shift+S`, `Meta+Shift+R`, `Print`) out-of-the-box.
+
+---
+
+## 🚀 Installation on CachyOS / Arch Linux
+
+### Method 1: Automated 1-Step Installer (Recommended)
+
+Clone the repository and run the automated installer:
+
+```bash
+git clone https://github.com/hearnelabs/OmniShot.git
+cd OmniShot
+./install.sh
+```
+
+**What the installer does automatically:**
+1. Checks and verifies standard package dependencies (`pyside6`, `python-dbus`, `kconfig`, `kservice`, `libnotify`, `tesseract`, `tesseract-data-eng`, `gcc`).
+2. Compiles the high-performance native C stitching engine (`libomnishot_stitch.so`) with `-O3 -march=native`.
+3. Verifies `/dev/uinput` permissions and installs the udev rule (`99-omnishot-uinput.rules`) if required.
+4. Generates pixel-perfect icons across all hicolor resolutions (`16x16` up to `512x512` and scalable vector SVG) and updates your active icon theme (`Kaze-dark`, `Breeze-Dark`, etc.).
+5. Installs the desktop launcher to `~/.local/share/applications/omnishot.desktop` and creates a symlink in `~/.local/bin/omnishot`.
+6. Registers KDE Plasma 6 global shortcuts (`Meta+Shift+S`, `Print`) and refreshes desktop icon and sycoca caches.
+7. Executes the automated test suite to verify system integrity.
+
+---
+
+### Method 2: Arch / CachyOS PKGBUILD (`makepkg`)
+
+OmniShot includes a standard `PKGBUILD` for Arch package managers:
+
+```bash
+git clone https://github.com/hearnelabs/OmniShot.git
+cd OmniShot
+makepkg -si
+```
+
+---
+
+## ⌨️ Usage & CLI Shortcuts
+
+Launch OmniShot from your application menu (Kickoff), KRunner (`Alt+Space`), or the terminal:
+
 ```bash
 # Launch the main OmniShot annotator window
 omnishot
@@ -39,60 +127,51 @@ omnishot
 # Start an Auto-Scrolling Capture session immediately
 omnishot -S
 
-# Start a Manual Scrolling Capture session
+# Start an Interactive Manual Scrolling Capture session
 omnishot -M
 
-# Snip a rectangular region (like Spectacle Shift+Print)
+# Snip a rectangular screen region (Spectacle default)
 omnishot -r
 
-# Capture full desktop workspace
-omnishot -f
-
-# Capture active window
+# Capture the active window
 omnishot -a
 
+# Capture the entire desktop workspace
+omnishot -f
+
 # Open an existing image in the annotator
-omnishot -E ~/Pictures/Screenshots/example.png
+omnishot -E ~/Pictures/Screenshots/capture.png
 ```
 
----
-
-## 📜 How Scrolling Capture Works
-
-1. **Trigger Scrolling Capture**:
-   - Click **`📜 Scrolling Capture`** in the OmniShot toolbar, or run `omnishot -S`, or select a region on screen and press **`A`** or click **`Auto-Scroll`**.
-2. **Select Region**:
-   - Drag a rectangle over the scrollable area (web browser, code editor, chat app, document).
-3. **Watch It Stitch in Real Time**:
-   - A sleek floating HUD appears alongside your capture with a live pulsing indicator, height counter, and real-time expanding miniature thumbnail.
-   - **Auto Mode**: OmniShot smoothly scrolls down and captures at high frequency.
-   - **Manual Mode**: You scroll with your trackpad or mouse wheel at your own pace.
-4. **Finish & Edit**:
-   - Press **`Enter`** (or click **`⏹ Done`**) when finished.
-   - OmniShot also auto-detects when the content hits the bottom of the page!
-   - The full long screenshot opens instantly in the OmniShot annotator ready to crop, blur, annotate, copy, or save!
-
----
-
-## ⌨️ Keyboard Shortcuts
+### Global Keyboard Shortcuts
 
 | Shortcut | Action |
 | :--- | :--- |
-| `Ctrl + C` | Copy screenshot to clipboard |
-| `Ctrl + S` | Quick save to `~/Pictures/Screenshots/` |
-| `Ctrl + Shift + S` | Save As... (choose location & format) |
-| `Ctrl + Z` | Undo last annotation |
-| `Ctrl + Y` | Redo annotation |
+| `Meta + Shift + S` / `Print` | Open In-Situ Snip / Scrolling Overlay |
+| `Meta + Shift + R` | Start Scrolling Capture immediately |
+| `Shift + Print` | Capture Entire Desktop |
+| `Meta + Print` | Capture Active Window |
+
+### Editor Shortcuts
+
+| Shortcut | Action |
+| :--- | :--- |
+| `Ctrl + C` | Copy composite image to clipboard |
+| `Ctrl + S` | Quick save to configured screenshots directory |
+| `Ctrl + Shift + S` | Save As... (choose file format and destination) |
+| `Ctrl + Z` / `Ctrl + Y` | Undo / Redo annotation |
 | `Ctrl + +` / `Ctrl + -` | Zoom in / Zoom out |
-| `Ctrl + 0` | Reset zoom to 100% |
-| `Enter` / `Space` | Confirm selection / Finish scrolling |
-| `Esc` | Cancel capture / Dismiss overlay |
+| `Ctrl + 0` | Fit image to window |
+| `Ctrl + 1` | Zoom to 100% (1:1 native hardware pixels) |
+| `Ctrl + ,` | Open Settings & Hotkey Configuration dialog |
+| `Enter` | Confirm selection / Finish scrolling session |
+| `Esc` | Cancel capture / Discard editor changes |
 
 ---
 
 ## ⚙️ Configuration
 
-Configuration is stored in `~/.config/omnishot/config.json`:
+Settings can be customized graphically via the built-in **Settings Dialog** (`Ctrl+,` or ⚙ icon) or directly edited in `~/.config/omnishot/config.json`:
 
 ```json
 {
@@ -102,10 +181,12 @@ Configuration is stored in `~/.config/omnishot/config.json`:
   "copy_to_clipboard_on_save": true,
   "scroll_step_pixels": 120,
   "scroll_delay_ms": 150,
-  "scroll_max_frames": 80,
+  "scroll_max_frames": 100,
   "scrollbar_margin_right": 24,
   "scroll_similarity_threshold": 28.0,
-  "auto_detect_end_of_scroll": true
+  "auto_detect_end_of_scroll": true,
+  "shortcut_launch": "Meta+Shift+S",
+  "shortcut_scrolling": "Meta+Shift+R"
 }
 ```
 
@@ -118,30 +199,63 @@ OmniShot/
 ├── bin/
 │   └── omnishot             # PATH executable launcher
 ├── native/
-│   ├── stitcher.c           # Ultra-fast SIMD/AVX2 multi-strip correlation engine
-│   └── Makefile             # Builds libomnishot_stitch.so
+│   ├── stitcher.c           # SIMD/AVX2 multi-strip correlation & translation detector
+│   └── Makefile             # Native build script
 ├── omnishot/
 │   ├── core/
 │   │   ├── capture.py       # org.kde.KWin.ScreenShot2 Wayland screencopy
-│   │   ├── uinput_mouse.py  # /dev/uinput virtual wheel kernel injection
-│   │   ├── stitcher.py      # Python controller bridging C stitcher to QImage
-│   │   ├── ocr.py           # Tesseract OCR engine
-│   │   └── config.py        # Config persistence
+│   │   ├── uinput_mouse.py  # /dev/uinput virtual wheel and keyboard scroller
+│   │   ├── stitcher.py      # Python controller with on-the-fly C auto-compiler
+│   │   ├── stitcher.c       # Bundled source fallback for native C engine
+│   │   ├── ocr.py           # Tesseract OCR text extractor
+│   │   └── config.py        # Settings management & KDE shortcut persistence
 │   ├── ui/
-│   │   ├── main_window.py   # Spectacle-style primary annotator & viewer
-│   │   ├── canvas.py        # Interactive annotation canvas (pen, arrow, blur...)
-│   │   ├── snip_overlay.py  # Wayland region selector with loupe magnifier
-│   │   ├── scroll_hud.py    # Floating live HUD with preview thumbnail
-│   │   └── theme.py         # KDE Plasma 6 Breeze Dark QSS
-│   ├── cli.py               # CLI parser matching Spectacle + scroll flags
-│   └── app.py               # Application coordinator
+│   │   ├── launch_overlay.py# In-situ Spectacle-style floating launch bar & snip selector
+│   │   ├── main_window.py   # Resizable annotation editor with pinned utilities
+│   │   ├── canvas.py        # Vector annotation canvas with single-pass scratch highlighter
+│   │   ├── scroll_hud.py    # Wayland floating HUD with live expanding thumbnail
+│   │   ├── settings_dialog.py # Settings, default directory, and hotkey preferences
+│   │   ├── icons.py         # High-contrast vector icon factory
+│   │   └── theme.py         # KDE Plasma 6 Breeze Dark styling
+│   ├── cli.py               # CLI argument parser
+│   └── app.py               # Application lifecycle & session manager
 ├── tests/
-│   └── test_omnishot.py     # Comprehensive automated test suite
-├── omnishot.desktop         # KDE application entry with restricted interfaces
-├── omnishot.svg             # High-DPI Breeze vector application icon
+│   └── test_omnishot.py     # Automated unit test suite (11/11 passing)
+├── install.sh               # One-step automated installer for CachyOS / Arch
+├── PKGBUILD                 # Arch Linux / CachyOS package build recipe
+├── omnishot.desktop         # KDE desktop entry with actions and shortcuts
+├── omnishot.svg             # Full-bleed Breeze 6 vector application icon
+├── LICENSE                  # GNU General Public License v3.0
 └── README.md
 ```
 
 ---
 
-*Crafted with ❤️ for CachyOS and KDE Plasma 6.*
+## 🧪 Testing
+
+To run the automated verification suite:
+
+```bash
+python3 -m unittest discover tests -v
+```
+
+All 11 unit tests validate:
+- Native C stitcher exact pixel displacement and margin detection
+- `/dev/uinput` virtual device initialization and event emission
+- KWin ScreenShot2 native Wayland screencopy
+- Tesseract OCR engine availability
+- Vector annotation hit-testing, rendering, and canvas cropping
+- Translucent highlighter readability across light and dark backgrounds
+- Opacity slider and color palette bidirectional synchronization
+- Viewport and window resizability from $480 \times 360$ to $1600 \times 900$
+
+---
+
+## 📜 License & Credits
+
+- **Created by**: [HearneLabs](https://github.com/hearnelabs)
+- **Inspiration**: [KDE Spectacle](https://apps.kde.org/spectacle/) & [ShareX](https://getsharex.com/)
+- **Fuel**: Caffeine ☕
+- **License**: [GNU General Public License v3.0](LICENSE)
+
+*Built with passion for CachyOS, KDE Plasma 6, and the Linux desktop community.*
