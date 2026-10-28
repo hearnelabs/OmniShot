@@ -1,0 +1,62 @@
+### Bug Report & Feature Patch: Multi-Monitor Active Cursor Tracking
+
+**Description of the Issue**
+In multi-monitor configurations (e.g., an Ultrawide alongside a secondary display), OmniShot defaults to capturing and spawning on the primary monitor or capturing the entire virtual multi-monitor workspace. 
+1. `capture_workspace()` grabs all screens stitched together, showing the entire desktop layout in the background rather than isolating the active monitor.
+2. `capture_screen()` relies on hardcoded default display names (like `"eDP-1"`), which throws an error on desktop monitors and falls back to `capture_workspace()`.
+3. Drawn selection coordinates on secondary monitors were misaligned because local overlay coordinates were not translated to the global desktop workspace.
+
+**What Was Changed (The Solution)**
+To make OmniShot dynamically respect whichever screen the user's mouse cursor is currently resting on, the following logic was implemented:
+*   **Dynamic Screen Detection:** Imported `QCursor` to detect the active pointer location and used `QGuiApplication.screenAt(QCursor.pos())` to identify the active monitor.
+*   **Exact Geometry Capture:** Replaced `capture_workspace()` and `capture_screen()` calls with `capture_area()`, passing the exact `x, y, width, height` of the active monitor's geometry. This cleanly isolates the screenshot background to a single display without relying on internal Wayland display names.
+*   **Global Coordinate Translation:** Added a translation step in the confirmation callbacks. When a user draws a box on a secondary monitor overlay, the local `QRect` is translated by the overlay's global `topLeft()` position so the backend snips the correct geometric region.
+
+---
+
+### Suggested Code Updates for `omnishot/app.py`
+
+**1. Add Required Imports**
+In `app.py`, add `QCursor` to the PySide6.QtGui imports:
+```python
+from PySide6.QtGui import QImage, QGuiApplication, QCursor
+```
+
+**2. Update Launch & Scroll Background Captures**
+In `_do_launch_interactive()`, `_execute_capture_trigger()` (for `scroll_auto`/`scroll_manual`), and `fullscreen` modes, replace `capture_workspace()` or `capture_screen()` with the active screen's geometry:
+```python
+# Detect screen under cursor
+cursor_pos = QCursor.pos()
+screen = QGuiApplication.screenAt(cursor_pos) or QGuiApplication.primaryScreen()
+geo = screen.geometry()
+
+# Capture only that exact monitor's geometry
+bg_screen = self.capture_backend.capture_area(geo.x(), geo.y(), geo.width(), geo.height())
+```
+
+**3. Translate Selection Coordinates for Secondary Monitors**
+In `_on_snapshot_confirmed()` and `_on_scroll_confirmed()`, translate the local `QRect` to global coordinates before passing it to the capture backend or stitcher:
+```python
+def _on_snapshot_confirmed(self, rect: QRect, img: Optional[QImage] = None):
+    # Translate local overlay coordinates to global multi-monitor coordinates
+    if self._active_overlay:
+        rect = rect.translated(self._active_overlay.geometry().topLeft())
+        
+    if not img or img.isNull():
+        img = self.capture_backend.capture_area(rect.x(), rect.y(), rect.width(), rect.height())
+    if img:
+        self._show_editor_with_image(img)
+    else:
+        self.show_main_window()
+```
+
+```python
+def _on_scroll_confirmed(self, rect: QRect, is_auto: bool):
+    # Translate local overlay coordinates to global multi-monitor coordinates
+    if self._active_overlay:
+        rect = rect.translated(self._active_overlay.geometry().topLeft())
+        
+    self._scroll_target_rect = rect
+    self._is_auto_scroll = is_auto
+    QTimer.singleShot(300, lambda: self._start_scrolling_session(rect, is_auto))
+```
