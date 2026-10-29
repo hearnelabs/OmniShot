@@ -15,6 +15,7 @@ from .core.config import OmniShotConfig
 from .core.capture import get_capture_backend
 from .core.uinput_mouse import UInputScroller
 from .core.stitcher import ScrollingStitcher
+from .core.clipboard import copy_image_to_clipboard, ClipboardPersistenceKeeper
 from .ui.main_window import OmniShotMainWindow
 from .ui.snip_overlay import SnipSelectionOverlay
 from .ui.scroll_hud import ScrollingCaptureHUD
@@ -27,6 +28,7 @@ class OmniShotApp(QObject):
         self.config = config or OmniShotConfig.load()
         self.capture_backend = get_capture_backend()
         self.uinput_scroller = UInputScroller()
+        self.clipboard_keeper = ClipboardPersistenceKeeper(self.qapp, parent=self)
 
         # Windows (Editor is lazily shown only post-capture)
         self.main_window: Optional[OmniShotMainWindow] = None
@@ -42,8 +44,14 @@ class OmniShotApp(QObject):
     def get_or_create_main_window(self) -> OmniShotMainWindow:
         if self.main_window is None:
             self.main_window = OmniShotMainWindow(self.config)
+            self.main_window.clipboard_keeper = self.clipboard_keeper
             self.main_window.requestCapture.connect(self.trigger_capture)
+            self.main_window.windowClosed.connect(self._on_main_window_closed)
         return self.main_window
+
+    def _on_main_window_closed(self):
+        """Called when the user closes the OmniShot editor window."""
+        self.clipboard_keeper.enter_background_persistence()
 
     def show_main_window(self):
         mw = self.get_or_create_main_window()
@@ -117,7 +125,10 @@ class OmniShotApp(QObject):
         if self.main_window and not self.main_window.isHidden():
             self.show_main_window()
         else:
-            self.qapp.quit()
+            if self.clipboard_keeper.has_image_offered():
+                self.clipboard_keeper.enter_background_persistence()
+            else:
+                self.qapp.quit()
 
     def trigger_capture(self, mode: str):
         """Triggers capture for: region, scroll_auto, scroll_manual, fullscreen, window."""
@@ -197,18 +208,15 @@ class OmniShotApp(QObject):
 
     def _show_editor_with_image(self, img: QImage):
         """Displays the full OmniShot Annotation Editor loaded with the captured image and copies to clipboard."""
-        # Immediately copy to clipboard so user can paste right away
-        try:
-            clipboard = QGuiApplication.clipboard()
-            clipboard.setImage(img)
-        except Exception as e:
-            print(f"[OmniShot] Warning: Could not copy image to clipboard: {e}")
-
         mw = self.get_or_create_main_window()
         mw.set_captured_image(img)
         mw.show()
         mw.raise_()
         mw.activateWindow()
+
+        # Multi-format MIME copy to clipboard and mark offer for persistence
+        if copy_image_to_clipboard(img):
+            self.clipboard_keeper.mark_image_offered()
 
     def _on_scroll_confirmed(self, rect: QRect, is_auto: bool):
         # Translate local overlay coordinates to global multi-monitor coordinates
@@ -383,4 +391,7 @@ class OmniShotApp(QObject):
         if self.main_window and not self.main_window.isHidden():
             self.show_main_window()
         else:
-            self.qapp.quit()
+            if self.clipboard_keeper.has_image_offered():
+                self.clipboard_keeper.enter_background_persistence()
+            else:
+                self.qapp.quit()

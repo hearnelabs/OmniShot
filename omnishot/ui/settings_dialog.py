@@ -385,7 +385,7 @@ class OmniShotSettingsDialog(QDialog):
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(subtitle)
 
-        version = QLabel("Version 1.0.0 (CachyOS Edition)")
+        version = QLabel("Version 1.0.3 (CachyOS Edition)")
         version.setStyleSheet("font-size: 12px; color: #7f8c8d; font-family: monospace;")
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(version)

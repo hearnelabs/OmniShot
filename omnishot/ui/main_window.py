@@ -26,6 +26,7 @@ from PySide6.QtCore import Qt, QSize, Signal, QRect, QPoint, QTimer
 
 from ..core.config import OmniShotConfig
 from ..core.ocr import OCREngine
+from ..core.clipboard import copy_image_to_clipboard
 from .canvas import (
     AnnotationCanvas, ToolType, BaseAnnotation, TextAnnotation,
     RectAnnotation, SpeechBalloonAnnotation, StepBadgeAnnotation,
@@ -373,12 +374,15 @@ class ViewportContainer(QWidget):
 
 class OmniShotMainWindow(QMainWindow):
     requestCapture = Signal(str) # "region", "scroll_auto", "scroll_manual", "fullscreen", "window"
+    windowClosed = Signal()
 
     def __init__(self, config: Optional[OmniShotConfig] = None, parent=None):
         super().__init__(parent)
         self.config = config or OmniShotConfig.load()
         self.current_filename: str = "OmniShot_Image.png"
         self._is_pinned = False
+        self._has_copied_to_clipboard: bool = False
+        self.clipboard_keeper = None
 
         icon_path = Path(__file__).parent.parent.parent / "omnishot.svg"
         if icon_path.exists():
@@ -891,6 +895,13 @@ class OmniShotMainWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
 
+        # Auto-copy image to clipboard immediately with rich multi-format MIME data
+        if self.config.copy_to_clipboard_on_capture:
+            if copy_image_to_clipboard(image):
+                self._has_copied_to_clipboard = True
+                if self.clipboard_keeper:
+                    self.clipboard_keeper.mark_image_offered()
+
         # For tall scrolling images (e.g. height > 1600), fit window so entire document is surveyed;
         # For standard region and window captures, default to 100% (1:1 native hardware resolution)!
         if image.height() > 1600 or image.width() > 2400:
@@ -898,16 +909,23 @@ class OmniShotMainWindow(QMainWindow):
         else:
             self.canvas.set_zoom(1.0)
 
+    def closeEvent(self, event):
+        event.accept()
+        self.windowClosed.emit()
+
     def _finish_and_copy(self):
         self.copy_to_clipboard()
         self.quick_save()
+        self.close()
 
     def copy_to_clipboard(self):
         composite = self.canvas.render_composite_image()
         if not composite or composite.isNull():
             return
-        clipboard = QGuiApplication.clipboard()
-        clipboard.setImage(composite)
+        if copy_image_to_clipboard(composite):
+            self._has_copied_to_clipboard = True
+            if self.clipboard_keeper:
+                self.clipboard_keeper.mark_image_offered()
 
     def quick_save(self):
         composite = self.canvas.render_composite_image()

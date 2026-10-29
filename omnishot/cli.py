@@ -14,7 +14,7 @@ from PySide6.QtCore import QTimer
 from .core.config import OmniShotConfig
 from .app import OmniShotApp
 
-__version__ = "1.0.0"
+__version__ = "1.0.3"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -44,6 +44,7 @@ def main():
     args = parser.parse_args()
 
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
     app.setApplicationName("omnishot")
     app.setApplicationDisplayName("OmniShot")
     app.setOrganizationName("HearneLabs")

@@ -376,6 +376,39 @@ class TestOmniShot(unittest.TestCase):
         ground_truth = full_doc.copy(0, 0, w, expected_total_h)
         self.assertEqual(stitched, ground_truth, "Stitched output must be bit-for-bit identical to ground truth with zero squashing")
 
+    def test_15_clipboard_persistence_on_window_close(self):
+        """Verify that closing the OmniShot editor keeps clipboard data alive in background until superseded."""
+        from omnishot.app import OmniShotApp
+        from PySide6.QtGui import QGuiApplication, QColor
+        from PySide6.QtCore import QTimer
+
+        app_obj = OmniShotApp(self.app)
+        test_img = QImage(200, 150, QImage.Format.Format_ARGB32)
+        test_img.fill(QColor(42, 120, 220))
+
+        # Show editor with image and verify initial copy
+        app_obj._show_editor_with_image(test_img)
+        self.app.processEvents()
+
+        self.assertTrue(app_obj.clipboard_keeper.has_image_offered())
+        cb = QGuiApplication.clipboard()
+        self.assertFalse(cb.image().isNull())
+
+        # Close the window - must activate background persistence
+        self.assertIsNotNone(app_obj.main_window)
+        app_obj.main_window.close()
+        self.app.processEvents()
+
+        self.assertTrue(app_obj.clipboard_keeper._is_persisting_in_background)
+        # Clipboard must still have the image
+        self.assertFalse(cb.image().isNull())
+        self.assertEqual(cb.image().width(), 200)
+        self.assertEqual(cb.image().height(), 150)
+
+        # Trigger simulated external clipboard change
+        app_obj.clipboard_keeper._on_clipboard_changed()
+        self.assertFalse(app_obj.clipboard_keeper._is_persisting_in_background)
+
 if __name__ == "__main__":
     unittest.main()
 
