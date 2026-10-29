@@ -31,6 +31,7 @@ class ToolType:
     PIXELATE = "pixelate"
     MAGNIFY = "magnify"
     CROP = "crop"
+    IMAGE = "image"
 
 # Handle identifiers for resizing
 HANDLE_NONE = -1
@@ -148,6 +149,36 @@ class BaseAnnotation:
             painter.drawEllipse(pt, HANDLE_SIZE / 2, HANDLE_SIZE / 2)
 
         painter.restore()
+
+    def clone(self) -> 'BaseAnnotation':
+        """Creates an independent deep copy of this annotation for undo/redo snapshots."""
+        if hasattr(self, 'image'):
+            c = self.__class__(self.image.copy() if self.image else None)
+        elif hasattr(self, 'is_rounded'):
+            c = self.__class__(self.is_rounded)
+        else:
+            c = self.__class__()
+        c.tool_type = self.tool_type
+        c.rect = QRectF(self.rect)
+        c.stroke_color = QColor(self.stroke_color)
+        c.fill_color = QColor(self.fill_color)
+        c.stroke_width = self.stroke_width
+        c.opacity = self.opacity
+        c.has_shadow = self.has_shadow
+        c.is_selected = self.is_selected
+
+        for attr in ('text', 'font_size', 'is_bold', 'is_italic', 'is_underline', 'points', 'step_number', 'blur_radius', 'corner_radius', 'tail_pos', 'image'):
+            if hasattr(self, attr):
+                val = getattr(self, attr)
+                if isinstance(val, QImage):
+                    setattr(c, attr, val.copy())
+                elif isinstance(val, list):
+                    setattr(c, attr, [QPointF(pt) if isinstance(pt, QPointF) else pt for pt in val])
+                elif isinstance(val, QPointF):
+                    setattr(c, attr, QPointF(val))
+                else:
+                    setattr(c, attr, val)
+        return c
 
 
 class RectAnnotation(BaseAnnotation):
@@ -714,6 +745,34 @@ class CropAnnotation(BaseAnnotation):
         painter.restore()
 
 
+class ImageAnnotation(BaseAnnotation):
+    """Movable and resizable vector image sticker annotation."""
+    def __init__(self, image: QImage, rect: Optional[QRectF] = None):
+        super().__init__()
+        self.tool_type = ToolType.IMAGE
+        self.image = image
+        if rect:
+            self.rect = rect
+        else:
+            self.rect = QRectF(0, 0, image.width(), image.height())
+        self.has_shadow = True
+        self.opacity = 1.0
+
+    def draw(self, painter: QPainter, base_image: Optional[QImage] = None):
+        if not self.image or self.image.isNull() or self.rect.isEmpty():
+            return
+        painter.save()
+        r = self.normalized_rect()
+        painter.setOpacity(self.opacity)
+
+        if self.has_shadow:
+            shadow_rect = r.translated(3, 4)
+            painter.fillRect(shadow_rect, QColor(0, 0, 0, 90))
+
+        painter.drawImage(r, self.image)
+        painter.restore()
+
+
 class AnnotationCanvas(QWidget):
     imageChanged = Signal()
     zoomChanged = Signal(float)
@@ -731,8 +790,8 @@ class AnnotationCanvas(QWidget):
         # Vector annotations
         self.annotations: List[BaseAnnotation] = []
         self.selected_annotation: Optional[BaseAnnotation] = None
-        self._history_stack: List[List[BaseAnnotation]] = []
-        self._redo_stack: List[List[BaseAnnotation]] = []
+        self._history_stack: List[Tuple[List[BaseAnnotation], Optional[QImage]]] = []
+        self._redo_stack: List[Tuple[List[BaseAnnotation], Optional[QImage]]] = []
         self._max_history = 35
 
         # Current tool & properties
@@ -800,8 +859,10 @@ class AnnotationCanvas(QWidget):
         return result
 
     def _push_history(self):
-        # Shallow copy annotation objects list
-        self._history_stack.append(list(self.annotations))
+        # Store snapshot of both vector annotations and base image
+        img_copy = self._base_image.copy() if (self._base_image and not self._base_image.isNull()) else None
+        anns_copy = [ann.clone() for ann in self.annotations]
+        self._history_stack.append((anns_copy, img_copy))
         if len(self._history_stack) > self._max_history:
             self._history_stack.pop(0)
         self._redo_stack.clear()
@@ -817,10 +878,14 @@ class AnnotationCanvas(QWidget):
         if self.can_undo():
             cur = self._history_stack.pop()
             self._redo_stack.append(cur)
-            self.annotations = list(self._history_stack[-1])
+            prev_anns, prev_img = self._history_stack[-1]
+            self.annotations = [ann.clone() for ann in prev_anns]
+            if prev_img is not None:
+                self._base_image = prev_img.copy()
             self.selected_annotation = None
             if self.step_counter > 1:
                 self.step_counter -= 1
+            self._update_canvas_size()
             self.update()
             self.imageChanged.emit()
 
@@ -828,11 +893,177 @@ class AnnotationCanvas(QWidget):
         if self.can_redo():
             nxt = self._redo_stack.pop()
             self._history_stack.append(nxt)
-            self.annotations = list(nxt)
+            nxt_anns, nxt_img = nxt
+            self.annotations = [ann.clone() for ann in nxt_anns]
+            if nxt_img is not None:
+                self._base_image = nxt_img.copy()
             self.selected_annotation = None
             self.step_counter += 1
+            self._update_canvas_size()
             self.update()
             self.imageChanged.emit()
+
+    def expand_canvas_with_image(
+        self,
+        pasted_img: QImage,
+        direction: str,
+        gap: int = 0,
+        alignment: str = "center",
+        bg_color: Optional[QColor] = None
+    ):
+        """
+        Expands the current canvas with a pasted image in the specified direction:
+        'right', 'down', 'left', or 'up'.
+        Existing annotations are automatically shifted to stay aligned with the original screenshot.
+        """
+        if not pasted_img or pasted_img.isNull():
+            return
+        if not self._base_image or self._base_image.isNull():
+            self.set_image(pasted_img)
+            return
+
+        bg_color = bg_color or QColor(0, 0, 0, 0)
+        gap = max(0, gap)
+
+        w1, h1 = self._base_image.width(), self._base_image.height()
+        w2, h2 = pasted_img.width(), pasted_img.height()
+
+        direction = direction.lower()
+        if direction in ("right", "east"):
+            new_w = w1 + gap + w2
+            new_h = max(h1, h2)
+
+            # Vertical alignment
+            if alignment == "top":
+                y1 = 0
+                y2 = 0
+            elif alignment == "bottom":
+                y1 = new_h - h1
+                y2 = new_h - h2
+            else:  # center
+                y1 = (new_h - h1) // 2
+                y2 = (new_h - h2) // 2
+
+            x1 = 0
+            x2 = w1 + gap
+            ann_dx = 0
+            ann_dy = y1
+
+        elif direction in ("left", "west"):
+            new_w = w2 + gap + w1
+            new_h = max(h1, h2)
+
+            if alignment == "top":
+                y1 = 0
+                y2 = 0
+            elif alignment == "bottom":
+                y1 = new_h - h1
+                y2 = new_h - h2
+            else:  # center
+                y1 = (new_h - h1) // 2
+                y2 = (new_h - h2) // 2
+
+            x2 = 0
+            x1 = w2 + gap
+            ann_dx = x1
+            ann_dy = y1
+
+        elif direction in ("down", "bottom", "south"):
+            new_w = max(w1, w2)
+            new_h = h1 + gap + h2
+
+            # Horizontal alignment
+            if alignment == "left":
+                x1 = 0
+                x2 = 0
+            elif alignment == "right":
+                x1 = new_w - w1
+                x2 = new_w - w2
+            else:  # center
+                x1 = (new_w - w1) // 2
+                x2 = (new_w - w2) // 2
+
+            y1 = 0
+            y2 = h1 + gap
+            ann_dx = x1
+            ann_dy = 0
+
+        elif direction in ("up", "top", "north"):
+            new_w = max(w1, w2)
+            new_h = h2 + gap + h1
+
+            if alignment == "left":
+                x1 = 0
+                x2 = 0
+            elif alignment == "right":
+                x1 = new_w - w1
+                x2 = new_w - w2
+            else:  # center
+                x1 = (new_w - w1) // 2
+                x2 = (new_w - w2) // 2
+
+            y2 = 0
+            y1 = h2 + gap
+            ann_dx = x1
+            ann_dy = y1
+        else:
+            return
+
+        self._push_history()
+
+        combined = QImage(new_w, new_h, QImage.Format.Format_ARGB32_Premultiplied)
+        combined.fill(bg_color)
+
+        painter = QPainter(combined)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        painter.drawImage(x1, y1, self._base_image)
+        painter.drawImage(x2, y2, pasted_img)
+        painter.end()
+
+        # Shift existing annotations to match current image's new placement
+        if ann_dx != 0 or ann_dy != 0:
+            for ann in self.annotations:
+                ann.move_by(float(ann_dx), float(ann_dy))
+
+        self._base_image = combined
+        self._update_canvas_size()
+        self.update()
+        self.imageChanged.emit()
+
+    def insert_image_annotation(self, pasted_img: QImage, pos: Optional[QPointF] = None):
+        """Inserts an image onto the canvas as an interactive vector annotation (sticker)."""
+        if not pasted_img or pasted_img.isNull() or not self._base_image:
+            return
+
+        self._push_history()
+
+        bw, bh = self._base_image.width(), self._base_image.height()
+        iw, ih = pasted_img.width(), pasted_img.height()
+
+        # If pasted image is larger than 75% of canvas, proportionally scale initial rect
+        max_w = bw * 0.75
+        max_h = bh * 0.75
+        scale = min(1.0, min(max_w / max(1, iw), max_h / max(1, ih)))
+        target_w = max(20.0, iw * scale)
+        target_h = max(20.0, ih * scale)
+
+        if pos is not None:
+            tl_x = pos.x() - target_w / 2
+            tl_y = pos.y() - target_h / 2
+        else:
+            # Center on base image
+            tl_x = (bw - target_w) / 2
+            tl_y = (bh - target_h) / 2
+
+        ann = ImageAnnotation(pasted_img, QRectF(tl_x, tl_y, target_w, target_h))
+        self.annotations.append(ann)
+        self.selected_annotation = ann
+        ann.is_selected = True
+        self.set_active_tool(ToolType.POINTER)
+        self.update()
+        self.imageChanged.emit()
+        self.selectionChanged.emit(ann)
 
     def delete_selected(self):
         if self.selected_annotation and self.selected_annotation in self.annotations:

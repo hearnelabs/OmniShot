@@ -26,7 +26,7 @@ from PySide6.QtCore import Qt, QSize, Signal, QRect, QPoint, QTimer
 
 from ..core.config import OmniShotConfig
 from ..core.ocr import OCREngine
-from ..core.clipboard import copy_image_to_clipboard
+from ..core.clipboard import copy_image_to_clipboard, get_clipboard_image
 from .canvas import (
     AnnotationCanvas, ToolType, BaseAnnotation, TextAnnotation,
     RectAnnotation, SpeechBalloonAnnotation, StepBadgeAnnotation,
@@ -35,6 +35,7 @@ from .canvas import (
 from .icons import get_tool_icon
 from .theme import OMNISHOT_DARK_QSS
 from .settings_dialog import OmniShotSettingsDialog
+from .paste_dialog import PasteExpandDialog
 
 
 class OCRDialog(QDialog):
@@ -391,6 +392,7 @@ class OmniShotMainWindow(QMainWindow):
         self.resize(1180, 820)
         self.setMinimumSize(480, 360)
         self.setStyleSheet(OMNISHOT_DARK_QSS)
+        self.setAcceptDrops(True)
 
         self._init_ui()
         self._setup_shortcuts()
@@ -604,6 +606,17 @@ class OmniShotMainWindow(QMainWindow):
         btn_copy.clicked.connect(self.copy_to_clipboard)
         grp_output.add_widget(btn_copy)
 
+        btn_paste = QToolButton(ribbon)
+        btn_paste.setProperty("class", "ribbonBtn")
+        btn_paste.setText("Paste")
+        btn_paste.setIcon(get_tool_icon("paste"))
+        btn_paste.setIconSize(QSize(20, 20))
+        btn_paste.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        btn_paste.setFixedSize(46, 46)
+        btn_paste.setToolTip("Paste Image (Ctrl+V) — Expand Canvas or Insert as Sticker")
+        btn_paste.clicked.connect(self.paste_from_clipboard)
+        grp_output.add_widget(btn_paste)
+
         btn_save = QToolButton(ribbon)
         btn_save.setProperty("class", "ribbonBtn")
         btn_save.setText("Save")
@@ -685,6 +698,15 @@ class OmniShotMainWindow(QMainWindow):
         self.btn_copy.clicked.connect(self.copy_to_clipboard)
         layout.addWidget(self.btn_copy)
 
+        self.btn_paste = QToolButton(self.action_pill)
+        self.btn_paste.setObjectName("pillActionBtn")
+        self.btn_paste.setIcon(get_tool_icon("paste"))
+        self.btn_paste.setIconSize(QSize(18, 18))
+        self.btn_paste.setFixedSize(30, 30)
+        self.btn_paste.setToolTip("Paste Image from Clipboard (Ctrl+V)")
+        self.btn_paste.clicked.connect(self.paste_from_clipboard)
+        layout.addWidget(self.btn_paste)
+
         self.btn_save = QToolButton(self.action_pill)
         self.btn_save.setObjectName("pillActionBtn")
         self.btn_save.setIcon(get_tool_icon("save"))
@@ -734,6 +756,7 @@ class OmniShotMainWindow(QMainWindow):
 
     def _setup_shortcuts(self):
         QShortcut(QKeySequence("Ctrl+C"), self, self.copy_to_clipboard)
+        QShortcut(QKeySequence("Ctrl+V"), self, self.paste_from_clipboard)
         QShortcut(QKeySequence("Ctrl+S"), self, self.quick_save)
         QShortcut(QKeySequence("Ctrl+Shift+S"), self, self.save_as)
         QShortcut(QKeySequence("Ctrl+Z"), self, self.canvas.undo)
@@ -926,6 +949,69 @@ class OmniShotMainWindow(QMainWindow):
             self._has_copied_to_clipboard = True
             if self.clipboard_keeper:
                 self.clipboard_keeper.mark_image_offered()
+
+    def paste_from_clipboard(self):
+        """Pastes an image from clipboard, prompting to expand canvas (Right/Down/Left/Up) or add overlay."""
+        img = get_clipboard_image()
+        if not img or img.isNull():
+            self.statusBar().showMessage("📋 No image found on clipboard to paste", 3000)
+            return
+        self.handle_incoming_image(img)
+
+    def handle_incoming_image(self, img: QImage):
+        """Processes an incoming pasted or dropped image."""
+        curr_img = self.canvas.get_image()
+        if not curr_img or curr_img.isNull():
+            self.set_captured_image(img)
+            self.statusBar().showMessage(f"📋 Loaded image from clipboard ({img.width()} × {img.height()} px)", 3500)
+            return
+
+        dlg = PasteExpandDialog(current_img=curr_img, pasted_img=img, parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            action = dlg.chosen_action
+            if action in ("right", "down", "left", "up"):
+                self.canvas.expand_canvas_with_image(
+                    pasted_img=img,
+                    direction=action,
+                    gap=dlg.gap,
+                    alignment=dlg.alignment,
+                    bg_color=dlg.bg_color
+                )
+                self._update_window_title()
+                composite = self.canvas.render_composite_image()
+                if composite:
+                    copy_image_to_clipboard(composite)
+                new_img = self.canvas.get_image()
+                w_new, h_new = (new_img.width(), new_img.height()) if new_img else (0, 0)
+                self.statusBar().showMessage(f"✨ Canvas expanded {action.title()} ({w_new} × {h_new} px)", 3500)
+            elif action == "overlay":
+                self.canvas.insert_image_annotation(img)
+                self.statusBar().showMessage("🖼️ Pasted image as overlay sticker (drag or resize handles to place)", 3500)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls() or event.mimeData().hasImage():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        img = None
+        if event.mimeData().hasImage():
+            val = event.mimeData().imageData()
+            if isinstance(val, QImage) and not val.isNull():
+                img = val
+            elif isinstance(val, QPixmap) and not val.isNull():
+                img = val.toImage()
+        elif event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                if url.isLocalFile():
+                    candidate = QImage(url.toLocalFile())
+                    if not candidate.isNull():
+                        img = candidate
+                        break
+        if img:
+            self.handle_incoming_image(img)
+            event.acceptProposedAction()
 
     def quick_save(self):
         composite = self.canvas.render_composite_image()

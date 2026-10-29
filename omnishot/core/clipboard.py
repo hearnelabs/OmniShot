@@ -95,6 +95,79 @@ def copy_image_to_clipboard(image: QImage) -> bool:
         return False
 
 
+def get_clipboard_image() -> Optional[QImage]:
+    """
+    Retrieves an image from the system clipboard across Wayland, X11, and Qt.
+    Checks:
+    1. QClipboard.image()
+    2. QMimeData image payload or raw PNG/BMP byte buffers
+    3. Copied file URLs pointing to local image files
+    4. Wayland wl-paste fallback if available
+    """
+    clipboard = QGuiApplication.clipboard()
+    if not clipboard:
+        return None
+
+    # 1. Direct QClipboard image
+    try:
+        img = clipboard.image()
+        if img and not img.isNull():
+            return img
+    except Exception:
+        pass
+
+    # 2. Inspect QMimeData
+    try:
+        mime = clipboard.mimeData()
+        if mime:
+            if mime.hasImage():
+                val = mime.imageData()
+                if isinstance(val, QImage) and not val.isNull():
+                    return val
+                from PySide6.QtGui import QPixmap
+                if isinstance(val, QPixmap) and not val.isNull():
+                    return val.toImage()
+
+            # Check raw byte buffers
+            for fmt in ("image/png", "image/bmp", "image/jpeg", "image/x-png"):
+                if mime.hasFormat(fmt):
+                    raw = mime.data(fmt)
+                    if raw and not raw.isEmpty():
+                        loaded = QImage()
+                        if loaded.loadFromData(raw):
+                            return loaded
+
+            # Check local file URLs (e.g. copied from Dolphin or file manager)
+            if mime.hasUrls():
+                for url in mime.urls():
+                    if url.isLocalFile():
+                        path = url.toLocalFile()
+                        loaded = QImage(path)
+                        if not loaded.isNull():
+                            return loaded
+    except Exception:
+        pass
+
+    # 3. Wayland wl-paste CLI fallback
+    wl_paste = shutil.which("wl-paste")
+    if wl_paste:
+        try:
+            p = subprocess.run(
+                [wl_paste, "--type", "image/png", "--no-newline"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=0.6
+            )
+            if p.returncode == 0 and len(p.stdout) > 0:
+                loaded = QImage()
+                if loaded.loadFromData(p.stdout, "PNG"):
+                    return loaded
+        except Exception:
+            pass
+
+    return None
+
+
 class ClipboardPersistenceKeeper(QObject):
     """
     Maintains clipboard persistence after the OmniShot editor window is closed.

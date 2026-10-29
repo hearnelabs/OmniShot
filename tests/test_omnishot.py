@@ -471,6 +471,89 @@ class TestOmniShot(unittest.TestCase):
         # Overlays should have closed cleanly
         self.assertEqual(len(coordinator.overlays), 0)
 
+    def test_17_paste_and_expand_canvas_directions(self):
+        """Verify pasting images to expand canvas in all directions (Right, Down, Left, Up) and as Overlay."""
+        from omnishot.ui.main_window import OmniShotMainWindow
+        from omnishot.ui.canvas import AnnotationCanvas, RectAnnotation, ToolType
+        from omnishot.ui.paste_dialog import PasteExpandDialog
+        from omnishot.core.clipboard import copy_image_to_clipboard, get_clipboard_image
+        from PySide6.QtGui import QColor, QImage
+        from PySide6.QtCore import QRectF
+
+        # 1. Test clipboard retrieve
+        sample_img = QImage(362, 152, QImage.Format.Format_ARGB32)
+        sample_img.fill(QColor(255, 50, 50))
+        copy_image_to_clipboard(sample_img)
+
+        cb_img = get_clipboard_image()
+        self.assertIsNotNone(cb_img)
+        self.assertEqual(cb_img.width(), 362)
+        self.assertEqual(cb_img.height(), 152)
+
+        # 2. Test canvas expansion
+        canvas = AnnotationCanvas()
+        img1 = QImage(362, 152, QImage.Format.Format_ARGB32)
+        img1.fill(QColor(40, 40, 40))
+        canvas.set_image(img1)
+
+        rect_ann = RectAnnotation()
+        rect_ann.rect = QRectF(10, 15, 80, 40)
+        canvas.annotations.append(rect_ann)
+        canvas._push_history()
+
+        img2 = QImage(687, 907, QImage.Format.Format_ARGB32)
+        img2.fill(QColor(20, 100, 200))
+
+        # Expand Right
+        canvas.expand_canvas_with_image(img2, direction="right", gap=0)
+        self.assertEqual(canvas.get_image().width(), 362 + 687)
+        self.assertEqual(canvas.get_image().height(), max(152, 907))
+        self.assertEqual(canvas.annotations[0].rect.x(), 10)
+
+        # Undo
+        canvas.undo()
+        self.assertEqual(canvas.get_image().width(), 362)
+        self.assertEqual(canvas.get_image().height(), 152)
+
+        # Expand Down
+        canvas.expand_canvas_with_image(img2, direction="down", gap=10)
+        self.assertEqual(canvas.get_image().width(), max(362, 687))
+        self.assertEqual(canvas.get_image().height(), 152 + 10 + 907)
+
+        # Undo
+        canvas.undo()
+        self.assertEqual(canvas.get_image().height(), 152)
+
+        # Expand Left
+        canvas.expand_canvas_with_image(img2, direction="left", gap=0)
+        self.assertEqual(canvas.get_image().width(), 687 + 362)
+        self.assertEqual(canvas.annotations[0].rect.x(), 10 + 687)
+
+        # Undo
+        canvas.undo()
+        self.assertEqual(canvas.annotations[0].rect.x(), 10)
+
+        # Expand Up
+        canvas.expand_canvas_with_image(img2, direction="up", gap=0)
+        self.assertEqual(canvas.get_image().height(), 907 + 152)
+        self.assertEqual(canvas.annotations[0].rect.y(), 15 + 907)
+
+        # Undo
+        canvas.undo()
+        self.assertEqual(canvas.annotations[0].rect.y(), 15)
+
+        # Overlay Sticker
+        canvas.insert_image_annotation(img2)
+        self.assertEqual(len(canvas.annotations), 2)
+        self.assertEqual(canvas.annotations[-1].tool_type, ToolType.IMAGE)
+
+        # 3. Test PasteExpandDialog
+        dlg = PasteExpandDialog(current_img=img1, pasted_img=img2)
+        self.assertEqual(dlg.current_img.width(), 362)
+        self.assertEqual(dlg.pasted_img.width(), 687)
+        dlg._select_action("right")
+        self.assertEqual(dlg.chosen_action, "right")
+
 if __name__ == "__main__":
     unittest.main()
 

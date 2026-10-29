@@ -23,6 +23,8 @@ def get_tool_icon(tool_name: str) -> QIcon:
         "pointer": "edit-select",
         "crop": "transform-crop",
         "dropper": "color-picker",
+        "paste": "edit-paste",
+        "copy": "edit-copy",
     }
     if tool_name in theme_map:
         ic = QIcon.fromTheme(theme_map[tool_name])
@@ -137,6 +139,24 @@ def get_tool_icon(tool_name: str) -> QIcon:
         p.setPen(QPen(QColor("#ffffff"), 1.8))
         p.setBrush(QBrush(QColor(255, 255, 255, 30)))
         p.drawRoundedRect(QRectF(6, 10, 15, 18), 2, 2)
+
+    elif tool_name == "paste":
+        # Clipboard board with sheet of paper
+        p.setPen(QPen(QColor("#8a93a0"), 1.8))
+        p.setBrush(QBrush(QColor(40, 44, 52, 200)))
+        p.drawRoundedRect(QRectF(5, 7, 22, 21), 2, 2)
+        # Top metal clip
+        p.setPen(QPen(QColor("#3daee9"), 1.5))
+        p.setBrush(QBrush(QColor("#3daee9")))
+        p.drawRoundedRect(QRectF(11, 4, 10, 5), 1, 1)
+        # Paged document overlay
+        p.setPen(QPen(QColor("#ffffff"), 1.5))
+        p.setBrush(QBrush(QColor(255, 255, 255, 50)))
+        p.drawRoundedRect(QRectF(9, 11, 14, 15), 1, 1)
+        # Content lines on page
+        p.setPen(QPen(QColor("#00f0ff"), 1.2))
+        p.drawLine(QPointF(12, 16), QPointF(20, 16))
+        p.drawLine(QPointF(12, 20), QPointF(18, 20))
 
     elif tool_name in ("save", "quick_save"):
         p.setPen(QPen(QColor("#3daee9"), 1.8))
