@@ -19,7 +19,7 @@ from .core.clipboard import copy_image_to_clipboard, ClipboardPersistenceKeeper
 from .ui.main_window import OmniShotMainWindow
 from .ui.snip_overlay import SnipSelectionOverlay
 from .ui.scroll_hud import ScrollingCaptureHUD
-from .ui.launch_overlay import SpectacleLaunchOverlay
+from .ui.launch_overlay import SpectacleLaunchOverlay, MultiScreenOverlayCoordinator
 
 class OmniShotApp(QObject):
     def __init__(self, qapp: QApplication, config: Optional[OmniShotConfig] = None):
@@ -34,6 +34,7 @@ class OmniShotApp(QObject):
         self.main_window: Optional[OmniShotMainWindow] = None
 
         self._active_overlay: Optional[SpectacleLaunchOverlay] = None
+        self._active_coordinator: Optional[MultiScreenOverlayCoordinator] = None
         self._scroll_hud: Optional[ScrollingCaptureHUD] = None
         self._stitcher: Optional[ScrollingStitcher] = None
         self._scroll_timer: Optional[QTimer] = None
@@ -85,43 +86,45 @@ class OmniShotApp(QObject):
         return QGuiApplication.primaryScreen()
 
     def launch_interactive(self, delay_ms: int = 0):
-        """Launches the Spectacle 6 in-situ floating overlay (initial launch state)."""
+        """Launches the Spectacle 6 in-situ floating overlay across all connected monitors."""
         if self.main_window and self.main_window.isVisible():
             self.main_window.hide()
 
         if delay_ms > 0:
-            QTimer.singleShot(delay_ms, self._do_launch_interactive)
+            QTimer.singleShot(delay_ms, lambda: self._do_launch_interactive(is_scroll_mode=False))
         else:
-            self._do_launch_interactive()
+            self._do_launch_interactive(is_scroll_mode=False)
 
-    def _do_launch_interactive(self):
+    def _do_launch_interactive(self, is_scroll_mode: bool = False):
         active_screen = self._get_active_screen()
-        bg_screen = None
-        if active_screen:
-            bg_screen = self.capture_backend.capture_screen(active_screen.name())
-            if not bg_screen or bg_screen.isNull():
-                geo = active_screen.geometry()
-                bg_screen = self.capture_backend.capture_area(geo.x(), geo.y(), geo.width(), geo.height())
 
-        if not bg_screen or bg_screen.isNull():
-            bg_screen = self.capture_backend.capture_workspace()
+        # Clean up any existing coordinator or overlay
+        if self._active_coordinator:
+            self._active_coordinator.close_all()
+            self._active_coordinator = None
+        if self._active_overlay:
+            self._active_overlay.close()
+            self._active_overlay = None
 
-        if not bg_screen or bg_screen.isNull():
-            print("[OmniShot] Failed to capture screen for launch overlay")
-            self.show_main_window()
-            return
-
-        self._active_overlay = SpectacleLaunchOverlay(bg_screen, target_screen=active_screen)
-        self._active_overlay.snapshotConfirmed.connect(self._on_snapshot_confirmed)
-        self._active_overlay.scrollCaptureConfirmed.connect(self._on_scroll_confirmed)
-        self._active_overlay.fullscreenConfirmed.connect(lambda: self.trigger_capture("fullscreen"))
-        self._active_overlay.windowConfirmed.connect(lambda: self.trigger_capture("window"))
-        self._active_overlay.overlayCancelled.connect(self._on_overlay_cancelled)
-        self._active_overlay.showFullScreen()
-        self._active_overlay.raise_()
-        self._active_overlay.activateWindow()
+        self._active_coordinator = MultiScreenOverlayCoordinator(
+            capture_backend=self.capture_backend,
+            active_screen=active_screen,
+            is_scroll_mode=is_scroll_mode,
+            parent=self
+        )
+        self._active_overlay = self._active_coordinator.primary_overlay
+        self._active_coordinator.snapshotConfirmed.connect(self._on_snapshot_confirmed)
+        self._active_coordinator.scrollCaptureConfirmed.connect(self._on_scroll_confirmed)
+        self._active_coordinator.fullscreenConfirmed.connect(lambda: self.trigger_capture("fullscreen"))
+        self._active_coordinator.windowConfirmed.connect(lambda: self.trigger_capture("window"))
+        self._active_coordinator.overlayCancelled.connect(self._on_overlay_cancelled)
+        self._active_coordinator.show()
 
     def _on_overlay_cancelled(self):
+        if self._active_coordinator:
+            self._active_coordinator = None
+        self._active_overlay = None
+
         if self.main_window and not self.main_window.isHidden():
             self.show_main_window()
         else:
@@ -139,45 +142,24 @@ class OmniShotApp(QObject):
 
     def _execute_capture_trigger(self, mode: str):
         if mode in ("region", "interactive"):
-            self._do_launch_interactive()
+            self._do_launch_interactive(is_scroll_mode=False)
 
         elif mode in ("scroll_auto", "scroll_manual"):
-            active_screen = self._get_active_screen()
-            bg_screen = None
-            if active_screen:
-                bg_screen = self.capture_backend.capture_screen(active_screen.name())
-                if not bg_screen or bg_screen.isNull():
-                    geo = active_screen.geometry()
-                    bg_screen = self.capture_backend.capture_area(geo.x(), geo.y(), geo.width(), geo.height())
-
-            if not bg_screen or bg_screen.isNull():
-                bg_screen = self.capture_backend.capture_workspace()
-
-            if not bg_screen or bg_screen.isNull():
-                print("[OmniShot] Failed to capture screen for scroll overlay")
-                self.show_main_window()
-                return
-
-            self._active_overlay = SpectacleLaunchOverlay(bg_screen, target_screen=active_screen)
-            self._active_overlay.snapshotConfirmed.connect(self._on_snapshot_confirmed)
-            self._active_overlay.scrollCaptureConfirmed.connect(self._on_scroll_confirmed)
-            self._active_overlay.fullscreenConfirmed.connect(lambda: self.trigger_capture("fullscreen"))
-            self._active_overlay.windowConfirmed.connect(lambda: self.trigger_capture("window"))
-            self._active_overlay.overlayCancelled.connect(self._on_overlay_cancelled)
-            # Switch into scroll prompt
-            self._active_overlay._on_pill_scroll_triggered()
-            self._active_overlay.showFullScreen()
-            self._active_overlay.raise_()
-            self._active_overlay.activateWindow()
+            self._do_launch_interactive(is_scroll_mode=True)
 
         elif mode == "fullscreen":
-            active_screen = self._get_active_screen()
+            screens = QGuiApplication.screens()
             img = None
-            if active_screen:
-                img = self.capture_backend.capture_screen(active_screen.name())
-                if not img or img.isNull():
-                    geo = active_screen.geometry()
-                    img = self.capture_backend.capture_area(geo.x(), geo.y(), geo.width(), geo.height())
+            if len(screens) > 1:
+                img = self.capture_backend.capture_workspace()
+
+            if not img or img.isNull():
+                active_screen = self._get_active_screen()
+                if active_screen:
+                    img = self.capture_backend.capture_screen(active_screen.name())
+                    if not img or img.isNull():
+                        geo = active_screen.geometry()
+                        img = self.capture_backend.capture_area(geo.x(), geo.y(), geo.width(), geo.height())
 
             if not img or img.isNull():
                 img = self.capture_backend.capture_workspace()
@@ -195,9 +177,12 @@ class OmniShotApp(QObject):
                 self.show_main_window()
 
     def _on_snapshot_confirmed(self, rect: QRect, img: Optional[QImage] = None):
-        # Translate local overlay coordinates to global multi-monitor coordinates
-        if self._active_overlay:
+        # Coordinates emitted by coordinator are already global desktop coordinates.
+        # If legacy single overlay was used without coordinator, translate local to global.
+        if not self._active_coordinator and self._active_overlay:
             rect = rect.translated(self._active_overlay.geometry().topLeft())
+        self._active_coordinator = None
+        self._active_overlay = None
 
         if not img or img.isNull():
             img = self.capture_backend.capture_area(rect.x(), rect.y(), rect.width(), rect.height())
@@ -219,9 +204,12 @@ class OmniShotApp(QObject):
             self.clipboard_keeper.mark_image_offered()
 
     def _on_scroll_confirmed(self, rect: QRect, is_auto: bool):
-        # Translate local overlay coordinates to global multi-monitor coordinates
-        if self._active_overlay:
+        # Coordinates emitted by coordinator are already global desktop coordinates.
+        # If legacy single overlay was used without coordinator, translate local to global.
+        if not self._active_coordinator and self._active_overlay:
             rect = rect.translated(self._active_overlay.geometry().topLeft())
+        self._active_coordinator = None
+        self._active_overlay = None
 
         self._scroll_target_rect = rect
         self._is_auto_scroll = is_auto

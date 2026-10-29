@@ -409,6 +409,69 @@ class TestOmniShot(unittest.TestCase):
         app_obj.clipboard_keeper._on_clipboard_changed()
         self.assertFalse(app_obj.clipboard_keeper._is_persisting_in_background)
 
+    def test_16_multiscreen_overlay_coordinator(self):
+        """Verify MultiScreenOverlayCoordinator manages overlays across all connected screens with global coordinates."""
+        from omnishot.app import OmniShotApp
+        from omnishot.ui.launch_overlay import MultiScreenOverlayCoordinator, SpectacleLaunchOverlay
+        from PySide6.QtCore import QRect, QPoint
+        from PySide6.QtGui import QGuiApplication, QColor, QImage
+
+        app_obj = OmniShotApp(self.app)
+        screens = QGuiApplication.screens()
+        self.assertGreaterEqual(len(screens), 1)
+
+        coordinator = MultiScreenOverlayCoordinator(
+            capture_backend=app_obj.capture_backend,
+            active_screen=screens[0],
+            is_scroll_mode=False
+        )
+        self.assertEqual(len(coordinator.overlays), len(screens))
+
+        # Verify primary overlay
+        primary_ov = coordinator.primary_overlay
+        self.assertIsNotNone(primary_ov)
+        self.assertTrue(primary_ov._is_primary_overlay)
+        self.assertFalse(primary_ov.bottom_pill.isHidden())
+
+        # If there are secondary screens, verify secondary overlay configuration
+        if len(coordinator.overlays) > 1:
+            sec_ov = coordinator.overlays[1]
+            self.assertFalse(sec_ov._is_primary_overlay)
+            self.assertTrue(sec_ov.bottom_pill.isHidden())
+            self.assertIn("OmniShot - Ready [", sec_ov.top_pill.text())
+
+        # Simulate selection drag on an overlay
+        test_ov = coordinator.overlays[-1]
+        coordinator.on_selection_started(test_ov)
+        self.assertFalse(coordinator.has_any_selection())
+
+        target_geo = test_ov._target_screen.geometry() if test_ov._target_screen else test_ov.geometry()
+        start_pt = target_geo.topLeft() + QPoint(50, 60)
+        curr_pt = target_geo.topLeft() + QPoint(250, 260)
+        coordinator.on_global_drag(test_ov, start_pt, curr_pt)
+        self.assertTrue(coordinator.has_any_selection())
+        self.assertIsNotNone(test_ov._selected_rect)
+        self.assertEqual(test_ov._selected_rect.x(), 50)
+        self.assertEqual(test_ov._selected_rect.y(), 60)
+        self.assertEqual(test_ov._selected_rect.width(), 201)
+        self.assertEqual(test_ov._selected_rect.height(), 201)
+
+        # Test snapshot confirmation emitting global coordinates
+        captured_data = []
+        coordinator.snapshotConfirmed.connect(lambda rect, img: captured_data.append((rect, img)))
+        test_ov._confirm_snapshot()
+
+        self.assertEqual(len(captured_data), 1)
+        emitted_rect, emitted_img = captured_data[0]
+        self.assertEqual(emitted_rect.x(), start_pt.x())
+        self.assertEqual(emitted_rect.y(), start_pt.y())
+        self.assertEqual(emitted_rect.width(), 201)
+        self.assertEqual(emitted_rect.height(), 201)
+
+        # Overlays should have closed cleanly
+        self.assertEqual(len(coordinator.overlays), 0)
+
 if __name__ == "__main__":
     unittest.main()
+
 

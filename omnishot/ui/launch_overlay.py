@@ -20,7 +20,7 @@ from PySide6.QtGui import (
     QPainter, QPen, QBrush, QColor, QFont, QMouseEvent, QKeyEvent,
     QPaintEvent, QImage, QAction, QCursor, QIcon, QGuiApplication
 )
-from PySide6.QtCore import Qt, QPoint, QRect, Signal, QSize
+from PySide6.QtCore import Qt, QPoint, QRect, Signal, QSize, QObject
 
 from .icons import get_tool_icon
 
@@ -351,7 +351,7 @@ class SpectacleLaunchOverlay(QWidget):
     windowConfirmed = Signal()
     overlayCancelled = Signal()
 
-    def __init__(self, background_image: QImage, target_screen=None, parent=None):
+    def __init__(self, background_image: QImage, target_screen=None, coordinator=None, is_primary_overlay: bool = True, parent=None):
         super().__init__(parent)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
@@ -368,6 +368,8 @@ class SpectacleLaunchOverlay(QWidget):
 
         self._bg_image: QImage = background_image
         self._target_screen = target_screen
+        self.coordinator = coordinator
+        self._is_primary_overlay = is_primary_overlay
         self._start_pos: Optional[QPoint] = None
         self._current_pos: Optional[QPoint] = None
         self._selected_rect: Optional[QRect] = None
@@ -401,6 +403,13 @@ class SpectacleLaunchOverlay(QWidget):
         self.bottom_pill.fullscreenCaptureTriggered.connect(self._on_pill_fullscreen_triggered)
         self.bottom_pill.settingsTriggered.connect(self._open_settings)
         self.bottom_pill.cancelTriggered.connect(self._on_cancel_requested)
+
+        # On secondary displays, hide bottom launch bar to avoid clutter
+        if not self._is_primary_overlay:
+            self.bottom_pill.hide()
+            self._prompt_text = "Click and drag to draw a capture region on this screen"
+            if target_screen:
+                self.top_pill.setText(f"OmniShot - Ready [{target_screen.name()}]")
 
         # 3. Selection micro-strip (attached to selection rect)
         self.selection_strip = SelectionActionStrip(self)
@@ -438,6 +447,8 @@ class SpectacleLaunchOverlay(QWidget):
         elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
             if self._selected_rect and self._selected_rect.width() > 10 and self._selected_rect.height() > 10:
                 self._confirm_snapshot()
+            elif self.coordinator and self.coordinator.has_any_selection():
+                self.coordinator.confirm_active_selection()
             else:
                 self._on_pill_fullscreen_triggered()
         elif key in (Qt.Key.Key_A, Qt.Key.Key_S):
@@ -455,8 +466,13 @@ class SpectacleLaunchOverlay(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.pos()
             # If clicked inside child controls, don't intercept
-            if self.bottom_pill.geometry().contains(pos) or (self.selection_strip.isVisible() and self.selection_strip.geometry().contains(pos)):
+            if self.bottom_pill.isVisible() and self.bottom_pill.geometry().contains(pos):
                 return
+            if self.selection_strip.isVisible() and self.selection_strip.geometry().contains(pos):
+                return
+
+            if self.coordinator:
+                self.coordinator.on_selection_started(self)
 
             # Check handle hits if selection exists
             if self._selected_rect and not self._selected_rect.isEmpty():
@@ -507,13 +523,18 @@ class SpectacleLaunchOverlay(QWidget):
 
         # Handle active operations
         if self._is_selecting and self._start_pos:
-            self._selected_rect = QRect(
-                min(self._start_pos.x(), pos.x()),
-                min(self._start_pos.y(), pos.y()),
-                abs(pos.x() - self._start_pos.x()),
-                abs(pos.y() - self._start_pos.y())
-            )
-            self.update()
+            global_pos = event.globalPosition().toPoint()
+            if self.coordinator and self._target_screen:
+                start_global = self._target_screen.geometry().topLeft() + self._start_pos
+                self.coordinator.on_global_drag(self, start_global, global_pos)
+            else:
+                self._selected_rect = QRect(
+                    min(self._start_pos.x(), pos.x()),
+                    min(self._start_pos.y(), pos.y()),
+                    abs(pos.x() - self._start_pos.x()),
+                    abs(pos.y() - self._start_pos.y())
+                )
+                self.update()
 
         elif self._is_dragging_rect and self._selected_rect:
             new_tl = pos - self._drag_offset
@@ -534,23 +555,26 @@ class SpectacleLaunchOverlay(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             if self._is_selecting:
                 self._is_selecting = False
-                if self._start_pos and self._current_pos:
-                    rect = QRect(
-                        min(self._start_pos.x(), self._current_pos.x()),
-                        min(self._start_pos.y(), self._current_pos.y()),
-                        abs(self._current_pos.x() - self._start_pos.x()),
-                        abs(self._current_pos.y() - self._start_pos.y())
-                    )
-                    if rect.width() > 20 and rect.height() > 20:
-                        self._selected_rect = rect
-                        if self._is_scroll_mode_pending:
-                            self._is_scroll_mode_pending = False
-                            self._confirm_scroll(True)
-                            return
-                        self._position_selection_strip(rect)
-                    else:
-                        self._selected_rect = None
-                        self.selection_strip.hide()
+                if self.coordinator:
+                    self.coordinator.on_selection_released(self, event.globalPosition().toPoint())
+                else:
+                    if self._start_pos and self._current_pos:
+                        rect = QRect(
+                            min(self._start_pos.x(), self._current_pos.x()),
+                            min(self._start_pos.y(), self._current_pos.y()),
+                            abs(self._current_pos.x() - self._start_pos.x()),
+                            abs(self._current_pos.y() - self._start_pos.y())
+                        )
+                        if rect.width() > 20 and rect.height() > 20:
+                            self._selected_rect = rect
+                            if self._is_scroll_mode_pending:
+                                self._is_scroll_mode_pending = False
+                                self._confirm_scroll(True)
+                                return
+                            self._position_selection_strip(rect)
+                        else:
+                            self._selected_rect = None
+                            self.selection_strip.hide()
 
             elif self._is_dragging_rect:
                 self._is_dragging_rect = False
@@ -636,13 +660,16 @@ class SpectacleLaunchOverlay(QWidget):
         self.selection_strip.move(tx, ty)
         self.selection_strip.show()
 
+    def clear_selection(self):
+        self._clear_selection()
+
     def _clear_selection(self):
         self._selected_rect = None
         self._start_pos = None
         self._current_pos = None
         self.selection_strip.hide()
         self._is_scroll_mode_pending = False
-        self._prompt_text = "Click and drag to draw a capture region,\nor select a mode below"
+        self._prompt_text = "Click and drag to draw a capture region,\nor select a mode below" if self._is_primary_overlay else "Click and drag to draw a capture region on this screen"
         self.update()
 
     def _on_pill_scroll_triggered(self):
@@ -658,21 +685,30 @@ class SpectacleLaunchOverlay(QWidget):
 
     def _on_pill_region_selected(self):
         self._is_scroll_mode_pending = False
-        self._prompt_text = "Click and drag to draw a capture region,\nor select a mode below"
+        self._prompt_text = "Click and drag to draw a capture region,\nor select a mode below" if self._is_primary_overlay else "Click and drag to draw a capture region on this screen"
         self.top_pill.setText("OmniShot - Ready")
         self.update()
 
     def _on_pill_window_triggered(self):
-        self.close()
-        self.windowConfirmed.emit()
+        if self.coordinator:
+            self.coordinator.confirm_window()
+        else:
+            self.close()
+            self.windowConfirmed.emit()
 
     def _on_pill_fullscreen_triggered(self):
-        self.close()
-        self.fullscreenConfirmed.emit()
+        if self.coordinator:
+            self.coordinator.confirm_fullscreen()
+        else:
+            self.close()
+            self.fullscreenConfirmed.emit()
 
     def _on_cancel_requested(self):
-        self.close()
-        self.overlayCancelled.emit()
+        if self.coordinator:
+            self.coordinator.cancel_all()
+        else:
+            self.close()
+            self.overlayCancelled.emit()
 
     def _open_settings(self):
         from .settings_dialog import OmniShotSettingsDialog
@@ -691,19 +727,20 @@ class SpectacleLaunchOverlay(QWidget):
                 pw = max(1, min(self._bg_image.width() - px, int(round(rect.width() * scale_x))))
                 ph = max(1, min(self._bg_image.height() - py, int(round(rect.height() * scale_y))))
                 cropped = self._bg_image.copy(px, py, pw, ph)
-            self.close()
-            self.snapshotConfirmed.emit(rect, cropped)
+
+            if self.coordinator:
+                self.coordinator.confirm_snapshot(self, rect, cropped)
+            else:
+                self.close()
+                self.snapshotConfirmed.emit(rect, cropped)
 
     def _confirm_scroll(self, is_auto: bool):
-        if self._selected_rect:
-            rect = self._selected_rect
+        rect = self._selected_rect or QRect(0, 0, self.width(), self.height())
+        if self.coordinator:
+            self.coordinator.confirm_scroll(self, rect, is_auto)
+        else:
             self.close()
             self.scrollCaptureConfirmed.emit(rect, is_auto)
-        else:
-            # Full primary screen as fallback target
-            r = QRect(0, 0, self.width(), self.height())
-            self.close()
-            self.scrollCaptureConfirmed.emit(r, is_auto)
 
     def paintEvent(self, event: QPaintEvent):
         painter = QPainter(self)
@@ -855,3 +892,178 @@ class SpectacleLaunchOverlay(QWidget):
         painter.drawText(QRect(lx, ly + loupe_radius * 2 + 2, loupe_radius * 2, 18), Qt.AlignmentFlag.AlignCenter, coord_text)
 
         painter.restore()
+
+
+class MultiScreenOverlayCoordinator(QObject):
+    """
+    Coordinates simultaneous full-screen in-situ overlays across ALL connected monitors.
+    Allows drawing a region anywhere on any screen, handles cross-screen selections,
+    and ensures clean synchronization of controls and confirmation actions.
+    """
+    snapshotConfirmed = Signal(QRect, object) # (global_rect, QImage)
+    scrollCaptureConfirmed = Signal(QRect, bool) # (global_rect, is_auto)
+    fullscreenConfirmed = Signal()
+    windowConfirmed = Signal()
+    overlayCancelled = Signal()
+
+    def __init__(self, capture_backend, active_screen=None, is_scroll_mode: bool = False, parent=None):
+        super().__init__(parent)
+        self.capture_backend = capture_backend
+        self.screens = QGuiApplication.screens()
+        self.active_screen = active_screen or QGuiApplication.primaryScreen()
+        self.overlays: List[SpectacleLaunchOverlay] = []
+        self._is_scroll_mode = is_scroll_mode
+        self._active_initiating_overlay: Optional[SpectacleLaunchOverlay] = None
+        self._global_selection_rect: Optional[QRect] = None
+
+        for s in self.screens:
+            bg = None
+            try:
+                bg = self.capture_backend.capture_screen(s.name())
+            except Exception:
+                pass
+            if not bg or bg.isNull():
+                geo = s.geometry()
+                try:
+                    bg = self.capture_backend.capture_area(geo.x(), geo.y(), geo.width(), geo.height())
+                except Exception:
+                    pass
+
+            is_primary = (s == self.active_screen)
+            overlay = SpectacleLaunchOverlay(
+                background_image=bg,
+                target_screen=s,
+                coordinator=self,
+                is_primary_overlay=is_primary
+            )
+            if self._is_scroll_mode:
+                overlay._on_pill_scroll_triggered()
+
+            self.overlays.append(overlay)
+
+    @property
+    def primary_overlay(self) -> Optional[SpectacleLaunchOverlay]:
+        for ov in self.overlays:
+            if ov._is_primary_overlay:
+                return ov
+        return self.overlays[0] if self.overlays else None
+
+    def show(self):
+        for ov in self.overlays:
+            if ov._target_screen:
+                ov.setScreen(ov._target_screen)
+                ov.setGeometry(ov._target_screen.geometry())
+            ov.showFullScreen()
+            ov.raise_()
+        pri = self.primary_overlay
+        if pri:
+            pri.activateWindow()
+
+    def close_all(self):
+        for ov in self.overlays:
+            ov.blockSignals(True)
+            ov.close()
+        self.overlays.clear()
+
+    def on_selection_started(self, initiating_overlay: SpectacleLaunchOverlay):
+        self._active_initiating_overlay = initiating_overlay
+        self._global_selection_rect = None
+        for ov in self.overlays:
+            if ov is not initiating_overlay:
+                ov.clear_selection()
+
+    def on_global_drag(self, initiating_overlay: SpectacleLaunchOverlay, start_global: QPoint, current_global: QPoint):
+        self._active_initiating_overlay = initiating_overlay
+        self._global_selection_rect = QRect(start_global, current_global).normalized()
+        for ov in self.overlays:
+            screen_geo = ov._target_screen.geometry() if ov._target_screen else ov.geometry()
+            intersect = self._global_selection_rect.intersected(screen_geo)
+            if not intersect.isEmpty() and intersect.width() > 1 and intersect.height() > 1:
+                ov._selected_rect = intersect.translated(-screen_geo.topLeft())
+            else:
+                ov._selected_rect = None
+            ov.update()
+
+    def on_selection_released(self, initiating_overlay: SpectacleLaunchOverlay, global_release_pos: QPoint):
+        target_ov = initiating_overlay
+        for ov in self.overlays:
+            screen_geo = ov._target_screen.geometry() if ov._target_screen else ov.geometry()
+            if screen_geo.contains(global_release_pos):
+                target_ov = ov
+                break
+
+        for ov in self.overlays:
+            if ov is not target_ov:
+                ov.selection_strip.hide()
+
+        # If scroll mode is pending and valid selection was drawn, confirm scroll immediately
+        if (self._is_scroll_mode or target_ov._is_scroll_mode_pending) and (
+            (target_ov._selected_rect and target_ov._selected_rect.width() > 10 and target_ov._selected_rect.height() > 10) or
+            (self._global_selection_rect and self._global_selection_rect.width() > 10 and self._global_selection_rect.height() > 10)
+        ):
+            target_ov._confirm_scroll(True)
+            return
+
+        if target_ov._selected_rect and target_ov._selected_rect.width() > 10 and target_ov._selected_rect.height() > 10:
+            target_ov._position_selection_strip(target_ov._selected_rect)
+            target_ov.selection_strip.show()
+        elif self._global_selection_rect and self._global_selection_rect.width() > 10 and self._global_selection_rect.height() > 10:
+            if target_ov._selected_rect:
+                target_ov._position_selection_strip(target_ov._selected_rect)
+                target_ov.selection_strip.show()
+        else:
+            target_ov.clear_selection()
+
+    def has_any_selection(self) -> bool:
+        if self._global_selection_rect and self._global_selection_rect.width() > 10 and self._global_selection_rect.height() > 10:
+            return True
+        return any(ov._selected_rect and ov._selected_rect.width() > 10 and ov._selected_rect.height() > 10 for ov in self.overlays)
+
+    def confirm_active_selection(self):
+        for ov in self.overlays:
+            if ov._selected_rect and ov._selected_rect.width() > 10 and ov._selected_rect.height() > 10:
+                ov._confirm_snapshot()
+                return
+
+    def confirm_snapshot(self, initiating_overlay: SpectacleLaunchOverlay, local_rect: QRect, local_img: Optional[QImage] = None):
+        target_screen = initiating_overlay._target_screen
+        offset = target_screen.geometry().topLeft() if target_screen else QPoint(0, 0)
+
+        if self._global_selection_rect and self._global_selection_rect.width() > 10 and self._global_selection_rect.height() > 10:
+            global_rect = self._global_selection_rect
+            if target_screen and target_screen.geometry().contains(global_rect):
+                img = local_img
+            else:
+                img = self.capture_backend.capture_area(global_rect.x(), global_rect.y(), global_rect.width(), global_rect.height())
+        else:
+            global_rect = local_rect.translated(offset)
+            img = local_img
+
+        if not img or img.isNull():
+            img = self.capture_backend.capture_area(global_rect.x(), global_rect.y(), global_rect.width(), global_rect.height())
+
+        self.close_all()
+        self.snapshotConfirmed.emit(global_rect, img)
+
+    def confirm_scroll(self, initiating_overlay: SpectacleLaunchOverlay, local_rect: QRect, is_auto: bool):
+        target_screen = initiating_overlay._target_screen
+        offset = target_screen.geometry().topLeft() if target_screen else QPoint(0, 0)
+        if self._global_selection_rect and self._global_selection_rect.width() > 10:
+            global_rect = self._global_selection_rect
+        else:
+            global_rect = local_rect.translated(offset)
+
+        self.close_all()
+        self.scrollCaptureConfirmed.emit(global_rect, is_auto)
+
+    def cancel_all(self):
+        self.close_all()
+        self.overlayCancelled.emit()
+
+    def confirm_fullscreen(self):
+        self.close_all()
+        self.fullscreenConfirmed.emit()
+
+    def confirm_window(self):
+        self.close_all()
+        self.windowConfirmed.emit()
