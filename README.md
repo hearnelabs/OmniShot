@@ -2,7 +2,7 @@
   <img src="omnishot.svg" width="136" height="136" alt="OmniShot Logo" />
   <h1>OmniShot</h1>
   <p><strong>The Next-Generation Screenshot & Scrolling Capture Suite for KDE Plasma 6 (Wayland)</strong></p>
-  <p><em>Created by <a href="https://github.com/hearnelabs">HearneLabs</a> in collaboration with <a href="https://github.com/BeanzCraftz">BeanzCraftz</a> (Testing & Ideas)</em><br />
+  <p><em>Created by <a href="https://github.com/hearnelabs">HearneLabs</a> in collaboration with <a href="https://github.com/BeanzCraftz">BeanzCraftz</a></em><br />
   <em>Inspired by Spectacle/ShareX, fuelled by caffeine ☕</em></p>
 
   <p>
@@ -289,7 +289,7 @@ All 19 unit tests validate:
 ## 📜 License & Credits
 
 - **Created by**: [HearneLabs](https://github.com/hearnelabs)
-- **Collaborator**: [BeanzCraftz](https://github.com/BeanzCraftz) (Version Testing, Feature Ideas & QA)
+- **Collaborator**: [BeanzCraftz](https://github.com/BeanzCraftz)
 - **Inspiration**: [KDE Spectacle](https://apps.kde.org/spectacle/) & [ShareX](https://getsharex.com/)
 - **Fuel**: Caffeine ☕
 - **License**: [GNU General Public License v3.0](LICENSE)
