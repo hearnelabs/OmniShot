@@ -152,20 +152,49 @@ omnishot -E ~/Pictures/Screenshots/capture.png
 | `Shift + Print` | Capture Entire Desktop |
 | `Meta + Print` | Capture Active Window |
 
-### Editor Shortcuts
+### ShareX-Compatible Tool Shortcuts
+
+| Key | Tool | Description |
+| :---: | :--- | :--- |
+| `B` | **Blur** | Gaussian Blur redaction tool |
+| `P` / `X` | **Pixelate** | Mosaic checkerboard redaction tool |
+| `R` | **Rectangle** | Vector rectangle box |
+| `Shift + R` | **Rounded Rectangle** | Rounded vector rectangle |
+| `E` | **Ellipse** | Circle / Ellipse vector shape |
+| `F` | **Freehand Pen** | Freehand vector drawing pen |
+| `L` | **Line** | Straight line tool |
+| `A` | **Arrow** | Directional line with arrowhead |
+| `H` | **Highlighter** | Translucent single-pass highlighter |
+| `T` / `O` | **Text** | Rich draggable text annotation box |
+| `S` | **Speech Balloon** | Speech bubble annotation with tail |
+| `I` | **Step Badge** | Sequential auto-increment step badges (1, 2, 3...) |
+| `C` | **Crop** | Crop canvas tool (`Enter` to apply, `Esc` to cancel) |
+| `M` / `V` | **Pointer** | Select and move annotations |
+
+### Editor & Annotation Editing Shortcuts
 
 | Shortcut | Action |
 | :--- | :--- |
+| `Delete` / `Backspace` | Delete currently selected shape |
+| `Shift + Delete` | Delete all annotations from canvas |
+| `Ctrl + D` | Duplicate currently selected shape |
+| `Arrow keys` | Nudge selected shape by 1 px |
+| `Shift + Arrow keys` | Move selected shape faster by 10 px |
+| `Ctrl + Arrow keys` | Resize selected shape from bottom-right corner |
+| `Alt + Arrow keys` | Resize selected shape from top-left corner |
+| `Home` / `End` | Bring selected shape to front / send to back |
+| `Page Up` / `Page Down` | Raise / lower selected shape one level in Z-order |
+| `Ctrl + Z` / `Ctrl + Y` | Undo / Redo annotation (`Ctrl + Shift + Z` also supported) |
 | `Ctrl + C` | Copy composite image to clipboard |
+| `Ctrl + V` | Paste image (expand Right/Down/Left/Up or add as Overlay) |
 | `Ctrl + S` | Quick save to configured screenshots directory |
 | `Ctrl + Shift + S` | Save As... (choose file format and destination) |
-| `Ctrl + Z` / `Ctrl + Y` | Undo / Redo annotation |
 | `Ctrl + +` / `Ctrl + -` | Zoom in / Zoom out |
-| `Ctrl + 0` | Fit image to window |
-| `Ctrl + 1` | Zoom to 100% (1:1 native hardware pixels) |
+| `Ctrl + 0` / `Ctrl + 1` | Zoom to 100% (1:1 native hardware pixels) |
+| `Ctrl + Alt + 0` | Fit image to window |
 | `Ctrl + ,` | Open Settings & Hotkey Configuration dialog |
-| `Enter` | Confirm selection / Finish scrolling session |
-| `Esc` | Cancel capture / Discard editor changes |
+| `Enter` | Accept crop if cropping, or Finish & Copy to clipboard |
+| `Esc` | Cancel crop / deselect shape / close editor |
 
 ---
 

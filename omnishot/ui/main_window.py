@@ -15,7 +15,7 @@ from typing import Optional, List, Dict
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QToolBar,
     QToolButton, QPushButton, QLabel, QScrollArea, QFileDialog,
-    QMessageBox, QDialog, QTextEdit, QStatusBar, QSpinBox,
+    QMessageBox, QDialog, QTextEdit, QLineEdit, QStatusBar, QSpinBox,
     QColorDialog, QButtonGroup, QFrame, QMenu, QSlider, QSplitter
 )
 from PySide6.QtGui import (
@@ -523,6 +523,7 @@ class OmniShotMainWindow(QMainWindow):
 
         self.tool_button_group = QButtonGroup(self)
         self.tool_button_group.setExclusive(True)
+        self.tool_buttons: Dict[str, QToolButton] = {}
 
         def add_ribbon_btn(group: RibbonGroup, tool_id: str, label: str, icon_name: str, tooltip: str, is_default: bool = False):
             btn = QToolButton(self)
@@ -533,12 +534,14 @@ class OmniShotMainWindow(QMainWindow):
             btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
             btn.setFixedSize(58, 46)
             btn.setCheckable(True)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             btn.setToolTip(tooltip)
             if is_default:
                 btn.setChecked(True)
-            btn.clicked.connect(lambda checked, t=tool_id: self._on_tool_selected(t))
+            btn.clicked.connect(lambda checked, t=tool_id: self.select_tool(t))
             self.tool_button_group.addButton(btn)
             group.add_widget(btn)
+            self.tool_buttons[tool_id] = btn
             return btn
 
         def add_divider():
@@ -549,9 +552,9 @@ class OmniShotMainWindow(QMainWindow):
 
         # Group 1: Drawing
         grp_draw = RibbonGroup("Drawing", ribbon)
-        add_ribbon_btn(grp_draw, ToolType.POINTER, "Pointer", "pointer", "Select & Move Annotations (V)", True)
-        add_ribbon_btn(grp_draw, ToolType.PEN, "Pen", "pen", "Freehand Pen (P)")
-        add_ribbon_btn(grp_draw, ToolType.ARROW, "Arrow", "arrow", "Line with Arrowhead (A)")
+        add_ribbon_btn(grp_draw, ToolType.POINTER, "Pointer", "pointer", "Select & Move (M / V)", True)
+        add_ribbon_btn(grp_draw, ToolType.PEN, "Pen", "pen", "Freehand Pen (F)")
+        add_ribbon_btn(grp_draw, ToolType.ARROW, "Arrow", "arrow", "Arrow (A)")
         add_ribbon_btn(grp_draw, ToolType.HIGHLIGHTER, "Highlight", "highlighter", "Translucent Highlighter (H)")
         layout.addWidget(grp_draw)
         add_divider()
@@ -568,16 +571,16 @@ class OmniShotMainWindow(QMainWindow):
         # Group 3: Redact
         grp_redact = RibbonGroup("Redact", ribbon)
         add_ribbon_btn(grp_redact, ToolType.BLUR, "Blur", "blur", "Gaussian Blur Redaction (B)")
-        add_ribbon_btn(grp_redact, ToolType.PIXELATE, "Pixelate", "pixelate", "Checkered Mosaic Redaction (X)")
-        add_ribbon_btn(grp_redact, ToolType.CROP, "Crop", "crop", "Crop Canvas (K)")
+        add_ribbon_btn(grp_redact, ToolType.PIXELATE, "Pixelate", "pixelate", "Checkered Mosaic Redaction (P)")
+        add_ribbon_btn(grp_redact, ToolType.CROP, "Crop", "crop", "Crop Canvas (C)")
         layout.addWidget(grp_redact)
         add_divider()
 
         # Group 4: Badges
         grp_badges = RibbonGroup("Badges", ribbon)
-        add_ribbon_btn(grp_badges, ToolType.STEP_BADGE, "Steps", "step_badge", "Sequential Step Badges 1-2-3 (S)")
-        add_ribbon_btn(grp_badges, ToolType.SPEECH_BALLOON, "Balloon", "speech_balloon", "Speech Balloon Bubble (C)")
-        add_ribbon_btn(grp_badges, ToolType.TEXT, "Text", "text", "Rich Text Box (T)")
+        add_ribbon_btn(grp_badges, ToolType.STEP_BADGE, "Steps", "step_badge", "Sequential Step Badges 1-2-3 (I)")
+        add_ribbon_btn(grp_badges, ToolType.SPEECH_BALLOON, "Balloon", "speech_balloon", "Speech Balloon Bubble (S)")
+        add_ribbon_btn(grp_badges, ToolType.TEXT, "Text", "text", "Rich Text Box (T / O)")
         layout.addWidget(grp_badges)
         add_divider()
 
@@ -755,18 +758,79 @@ class OmniShotMainWindow(QMainWindow):
             QTimer.singleShot(0, self.viewport_container.reposition_pill)
 
     def _setup_shortcuts(self):
+        # File & Action shortcuts
         QShortcut(QKeySequence("Ctrl+C"), self, self.copy_to_clipboard)
         QShortcut(QKeySequence("Ctrl+V"), self, self.paste_from_clipboard)
         QShortcut(QKeySequence("Ctrl+S"), self, self.quick_save)
         QShortcut(QKeySequence("Ctrl+Shift+S"), self, self.save_as)
         QShortcut(QKeySequence("Ctrl+Z"), self, self.canvas.undo)
         QShortcut(QKeySequence("Ctrl+Y"), self, self.canvas.redo)
+        QShortcut(QKeySequence("Ctrl+Shift+Z"), self, self.canvas.redo)
+        QShortcut(QKeySequence("Ctrl+D"), self, self.canvas.duplicate_selected)
+        QShortcut(QKeySequence("Delete"), self, self.canvas.delete_selected)
+        QShortcut(QKeySequence("Shift+Delete"), self, self.canvas.delete_all_annotations)
+
+        # Zoom shortcuts (ShareX: Ctrl+0 reset zoom, Ctrl+Alt+0 zoom to fit)
         QShortcut(QKeySequence("Ctrl++"), self, self.canvas.zoom_in)
         QShortcut(QKeySequence("Ctrl+="), self, self.canvas.zoom_in)
         QShortcut(QKeySequence("Ctrl+-"), self, self.canvas.zoom_out)
-        QShortcut(QKeySequence("Ctrl+0"), self, self._zoom_fit)
+        QShortcut(QKeySequence("Ctrl+0"), self, self.canvas.zoom_reset)
+        QShortcut(QKeySequence("Ctrl+Alt+0"), self, self._zoom_fit)
         QShortcut(QKeySequence("Ctrl+1"), self, self.canvas.zoom_reset)
         QShortcut(QKeySequence("Ctrl+,"), self, self.open_settings)
+
+        # Confirm (Enter) and Cancel (Escape)
+        QShortcut(QKeySequence("Return"), self, self._on_enter_pressed)
+        QShortcut(QKeySequence("Enter"), self, self._on_enter_pressed)
+        QShortcut(QKeySequence("Escape"), self, self._on_esc_pressed)
+
+        # ShareX 1-key tool shortcuts
+        tool_keybinds = [
+            ("B", ToolType.BLUR),
+            ("P", ToolType.PIXELATE),
+            ("X", ToolType.PIXELATE),
+            ("R", ToolType.RECTANGLE),
+            ("Shift+R", ToolType.ROUNDED_RECT),
+            ("E", ToolType.ELLIPSE),
+            ("F", ToolType.PEN),
+            ("L", ToolType.LINE),
+            ("A", ToolType.ARROW),
+            ("H", ToolType.HIGHLIGHTER),
+            ("T", ToolType.TEXT),
+            ("O", ToolType.TEXT),
+            ("S", ToolType.SPEECH_BALLOON),
+            ("I", ToolType.STEP_BADGE),
+            ("C", ToolType.CROP),
+            ("M", ToolType.POINTER),
+            ("V", ToolType.POINTER),
+        ]
+        for key_seq, tool_id in tool_keybinds:
+            sc = QShortcut(QKeySequence(key_seq), self)
+            sc.activated.connect(lambda t=tool_id: self._on_tool_shortcut(t))
+
+    def _on_tool_shortcut(self, tool_type: str):
+        fw = self.focusWidget()
+        if fw and isinstance(fw, (QLineEdit, QTextEdit, QSpinBox)):
+            return
+        self.select_tool(tool_type)
+        self.canvas.setFocus()
+
+    def _on_enter_pressed(self):
+        if self.canvas._creating_annotation and self.canvas._creating_annotation.tool_type == ToolType.CROP:
+            self.canvas.apply_crop()
+        else:
+            self._finish_and_copy()
+
+    def _on_esc_pressed(self):
+        if self.canvas._creating_annotation and self.canvas._creating_annotation.tool_type == ToolType.CROP:
+            self.canvas.cancel_crop()
+        elif self.canvas.selected_annotation:
+            self.canvas.selected_annotation.is_selected = False
+            self.canvas.selected_annotation = None
+            self.canvas.selectionChanged.emit(None)
+            self.canvas.update()
+        else:
+            self.close()
 
     def open_settings(self):
         dlg = OmniShotSettingsDialog(config=self.config, parent=self)
@@ -781,11 +845,18 @@ class OmniShotMainWindow(QMainWindow):
         if hasattr(self, "viewport_container"):
             QTimer.singleShot(0, self.viewport_container.reposition_pill)
 
+    def select_tool(self, tool_type: str):
+        """Activates a tool, synchronizing ribbon button checked states and canvas."""
+        if hasattr(self, "tool_buttons") and tool_type in self.tool_buttons:
+            self.tool_buttons[tool_type].setChecked(True)
+        self._on_tool_selected(tool_type)
+
     def _on_tool_selected(self, tool_type: str):
         self.canvas.set_active_tool(tool_type)
         if tool_type == ToolType.HIGHLIGHTER:
             if self.sidebar.slider_opac.value() > 50:
                 self.sidebar.slider_opac.setValue(35)
+        self.canvas.setFocus()
 
     def _on_color_selected(self, color: QColor):
         self.canvas.current_stroke_color = color

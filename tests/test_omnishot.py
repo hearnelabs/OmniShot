@@ -554,6 +554,155 @@ class TestOmniShot(unittest.TestCase):
         dlg._select_action("right")
         self.assertEqual(dlg.chosen_action, "right")
 
+    def test_18_sharex_keyboard_shortcuts(self):
+        """Verify full suite of ShareX keyboard shortcuts for tool switching and shape editing."""
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtGui import QKeyEvent
+        from PySide6.QtCore import QEvent, QRectF, Qt
+        from omnishot.ui.main_window import OmniShotMainWindow
+        from omnishot.ui.canvas import ToolType, RectAnnotation
+
+        app = QApplication.instance() or QApplication(["test", "-platform", "offscreen"])
+        win = OmniShotMainWindow()
+        test_img = QImage(600, 400, QImage.Format.Format_ARGB32_Premultiplied)
+        test_img.fill(QColor(50, 50, 50))
+        win.set_captured_image(test_img)
+
+        # 1. Test ShareX Tool Switching shortcuts
+        # B -> Blur
+        win._on_tool_shortcut(ToolType.BLUR)
+        self.assertEqual(win.canvas.current_tool, ToolType.BLUR)
+        self.assertTrue(win.tool_buttons[ToolType.BLUR].isChecked())
+
+        # P -> Pixelate
+        win._on_tool_shortcut(ToolType.PIXELATE)
+        self.assertEqual(win.canvas.current_tool, ToolType.PIXELATE)
+        self.assertTrue(win.tool_buttons[ToolType.PIXELATE].isChecked())
+
+        # R -> Rectangle
+        win._on_tool_shortcut(ToolType.RECTANGLE)
+        self.assertEqual(win.canvas.current_tool, ToolType.RECTANGLE)
+        self.assertTrue(win.tool_buttons[ToolType.RECTANGLE].isChecked())
+
+        # Shift+R -> Rounded Rectangle
+        win._on_tool_shortcut(ToolType.ROUNDED_RECT)
+        self.assertEqual(win.canvas.current_tool, ToolType.ROUNDED_RECT)
+        self.assertTrue(win.tool_buttons[ToolType.ROUNDED_RECT].isChecked())
+
+        # E -> Ellipse
+        win._on_tool_shortcut(ToolType.ELLIPSE)
+        self.assertEqual(win.canvas.current_tool, ToolType.ELLIPSE)
+        self.assertTrue(win.tool_buttons[ToolType.ELLIPSE].isChecked())
+
+        # F -> Freehand Pen
+        win._on_tool_shortcut(ToolType.PEN)
+        self.assertEqual(win.canvas.current_tool, ToolType.PEN)
+        self.assertTrue(win.tool_buttons[ToolType.PEN].isChecked())
+
+        # L -> Line
+        win._on_tool_shortcut(ToolType.LINE)
+        self.assertEqual(win.canvas.current_tool, ToolType.LINE)
+        self.assertTrue(win.tool_buttons[ToolType.LINE].isChecked())
+
+        # A -> Arrow
+        win._on_tool_shortcut(ToolType.ARROW)
+        self.assertEqual(win.canvas.current_tool, ToolType.ARROW)
+        self.assertTrue(win.tool_buttons[ToolType.ARROW].isChecked())
+
+        # H -> Highlighter
+        win._on_tool_shortcut(ToolType.HIGHLIGHTER)
+        self.assertEqual(win.canvas.current_tool, ToolType.HIGHLIGHTER)
+        self.assertTrue(win.tool_buttons[ToolType.HIGHLIGHTER].isChecked())
+
+        # T -> Text
+        win._on_tool_shortcut(ToolType.TEXT)
+        self.assertEqual(win.canvas.current_tool, ToolType.TEXT)
+        self.assertTrue(win.tool_buttons[ToolType.TEXT].isChecked())
+
+        # S -> Speech Balloon
+        win._on_tool_shortcut(ToolType.SPEECH_BALLOON)
+        self.assertEqual(win.canvas.current_tool, ToolType.SPEECH_BALLOON)
+        self.assertTrue(win.tool_buttons[ToolType.SPEECH_BALLOON].isChecked())
+
+        # I -> Step Badge
+        win._on_tool_shortcut(ToolType.STEP_BADGE)
+        self.assertEqual(win.canvas.current_tool, ToolType.STEP_BADGE)
+        self.assertTrue(win.tool_buttons[ToolType.STEP_BADGE].isChecked())
+
+        # C -> Crop
+        win._on_tool_shortcut(ToolType.CROP)
+        self.assertEqual(win.canvas.current_tool, ToolType.CROP)
+        self.assertTrue(win.tool_buttons[ToolType.CROP].isChecked())
+
+        # M / V -> Pointer (Select & Move)
+        win._on_tool_shortcut(ToolType.POINTER)
+        self.assertEqual(win.canvas.current_tool, ToolType.POINTER)
+        self.assertTrue(win.tool_buttons[ToolType.POINTER].isChecked())
+
+        # 2. Test Shape Actions: Duplicate (Ctrl+D), Nudge (Arrows), Z-Order, Deletion
+        canvas = win.canvas
+        ann1 = RectAnnotation()
+        ann1.rect = QRectF(50, 50, 100, 60)
+        canvas.annotations.append(ann1)
+        canvas.selected_annotation = ann1
+        ann1.is_selected = True
+
+        # Duplicate (Ctrl+D)
+        canvas.duplicate_selected()
+        self.assertEqual(len(canvas.annotations), 2)
+        ann2 = canvas.selected_annotation
+        self.assertIsNot(ann1, ann2)
+        self.assertEqual(ann2.rect.x(), 70)
+        self.assertEqual(ann2.rect.y(), 70)
+
+        # Nudge with arrow keys (1px)
+        ev_right = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier)
+        canvas.keyPressEvent(ev_right)
+        self.assertEqual(ann2.rect.x(), 71)
+
+        # Fast nudge with Shift (10px)
+        ev_shift_down = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.ShiftModifier)
+        canvas.keyPressEvent(ev_shift_down)
+        self.assertEqual(ann2.rect.y(), 80)
+
+        # Resize from bottom right with Ctrl (1px)
+        old_w = ann2.rect.width()
+        ev_ctrl_right = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.ControlModifier)
+        canvas.keyPressEvent(ev_ctrl_right)
+        self.assertEqual(ann2.rect.width(), old_w + 1)
+
+        # Z-order tests: Home (top), End (bottom), PageUp, PageDown
+        self.assertEqual(canvas.annotations[-1], ann2)
+        ev_end = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_End, Qt.KeyboardModifier.NoModifier)
+        canvas.keyPressEvent(ev_end)
+        self.assertEqual(canvas.annotations[0], ann2) # Moved to bottom
+
+        ev_home = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Home, Qt.KeyboardModifier.NoModifier)
+        canvas.keyPressEvent(ev_home)
+        self.assertEqual(canvas.annotations[-1], ann2) # Moved to top
+
+        # Delete selected (Delete)
+        ev_del = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Delete, Qt.KeyboardModifier.NoModifier)
+        canvas.keyPressEvent(ev_del)
+        self.assertEqual(len(canvas.annotations), 1)
+        self.assertIsNone(canvas.selected_annotation)
+
+        # Delete all (Shift+Delete)
+        canvas.selected_annotation = ann1
+        ev_shift_del = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Delete, Qt.KeyboardModifier.ShiftModifier)
+        canvas.keyPressEvent(ev_shift_del)
+        self.assertEqual(len(canvas.annotations), 0)
+
+        # Escape deselects
+        canvas.annotations.append(ann1)
+        canvas.selected_annotation = ann1
+        ann1.is_selected = True
+        win._on_esc_pressed()
+        self.assertIsNone(canvas.selected_annotation)
+        self.assertFalse(ann1.is_selected)
+
+        win.close()
+
 if __name__ == "__main__":
     unittest.main()
 

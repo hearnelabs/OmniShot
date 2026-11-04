@@ -1072,6 +1072,105 @@ class AnnotationCanvas(QWidget):
             self.selected_annotation = None
             self.selectionChanged.emit(None)
             self.update()
+            self.imageChanged.emit()
+
+    def delete_all_annotations(self):
+        if not self.annotations:
+            return
+        self._push_history()
+        self.annotations.clear()
+        self.selected_annotation = None
+        self.selectionChanged.emit(None)
+        self.update()
+        self.imageChanged.emit()
+
+    def duplicate_selected(self):
+        if not self.selected_annotation or self.selected_annotation not in self.annotations:
+            return
+        self._push_history()
+        dup = self.selected_annotation.clone()
+        dup.move_by(20.0, 20.0)
+        self.selected_annotation.is_selected = False
+        dup.is_selected = True
+        self.annotations.append(dup)
+        self.selected_annotation = dup
+        self.selectionChanged.emit(dup)
+        self.update()
+        self.imageChanged.emit()
+
+    def move_selected(self, dx: float, dy: float):
+        if not self.selected_annotation:
+            return
+        self._push_history()
+        self.selected_annotation.move_by(dx, dy)
+        self.update()
+        self.imageChanged.emit()
+
+    def resize_selected_from_bottom_right(self, dx: float, dy: float):
+        if not self.selected_annotation:
+            return
+        self._push_history()
+        handles = self.selected_annotation.get_handles()
+        if HANDLE_BR in handles:
+            cur = handles[HANDLE_BR]
+            self.selected_annotation.resize_by_handle(HANDLE_BR, cur + QPointF(dx, dy))
+        else:
+            r = self.selected_annotation.normalized_rect()
+            self.selected_annotation.resize_by_handle(HANDLE_BR, QPointF(r.right() + dx, r.bottom() + dy))
+        self.update()
+        self.imageChanged.emit()
+
+    def resize_selected_from_top_left(self, dx: float, dy: float):
+        if not self.selected_annotation:
+            return
+        self._push_history()
+        handles = self.selected_annotation.get_handles()
+        if HANDLE_TL in handles:
+            cur = handles[HANDLE_TL]
+            self.selected_annotation.resize_by_handle(HANDLE_TL, cur + QPointF(dx, dy))
+        else:
+            r = self.selected_annotation.normalized_rect()
+            self.selected_annotation.resize_by_handle(HANDLE_TL, QPointF(r.left() + dx, r.top() + dy))
+        self.update()
+        self.imageChanged.emit()
+
+    def move_selected_to_top(self):
+        if not self.selected_annotation or self.selected_annotation not in self.annotations:
+            return
+        self._push_history()
+        self.annotations.remove(self.selected_annotation)
+        self.annotations.append(self.selected_annotation)
+        self.update()
+        self.imageChanged.emit()
+
+    def move_selected_to_bottom(self):
+        if not self.selected_annotation or self.selected_annotation not in self.annotations:
+            return
+        self._push_history()
+        self.annotations.remove(self.selected_annotation)
+        self.annotations.insert(0, self.selected_annotation)
+        self.update()
+        self.imageChanged.emit()
+
+    def move_selected_up(self):
+        if not self.selected_annotation or self.selected_annotation not in self.annotations:
+            return
+        idx = self.annotations.index(self.selected_annotation)
+        if idx < len(self.annotations) - 1:
+            self._push_history()
+            self.annotations[idx], self.annotations[idx + 1] = self.annotations[idx + 1], self.annotations[idx]
+            self.update()
+            self.imageChanged.emit()
+
+    def move_selected_down(self):
+        if not self.selected_annotation or self.selected_annotation not in self.annotations:
+            return
+        idx = self.annotations.index(self.selected_annotation)
+        if idx > 0:
+            self._push_history()
+            self.annotations[idx], self.annotations[idx - 1] = self.annotations[idx - 1], self.annotations[idx]
+            self.update()
+            self.imageChanged.emit()
 
     def set_zoom(self, zoom: float):
         zoom = max(0.1, min(5.0, zoom))
@@ -1126,6 +1225,26 @@ class AnnotationCanvas(QWidget):
             self.setCursor(Qt.CursorShape.CrossCursor)
         else:
             self.setCursor(Qt.CursorShape.CrossCursor)
+
+        tool_labels = {
+            ToolType.BLUR: "Blur (B)",
+            ToolType.PIXELATE: "Pixelate (P)",
+            ToolType.RECTANGLE: "Rectangle (R)",
+            ToolType.ROUNDED_RECT: "Rounded Rectangle (Shift+R)",
+            ToolType.ELLIPSE: "Ellipse (E)",
+            ToolType.PEN: "Freehand Pen (F)",
+            ToolType.LINE: "Line (L)",
+            ToolType.ARROW: "Arrow (A)",
+            ToolType.HIGHLIGHTER: "Highlighter (H)",
+            ToolType.TEXT: "Text (T)",
+            ToolType.SPEECH_BALLOON: "Speech Balloon (S)",
+            ToolType.STEP_BADGE: "Step Badge (I)",
+            ToolType.CROP: "Crop Canvas (C)",
+            ToolType.POINTER: "Select & Move (M / V)",
+        }
+        if tool_type in tool_labels:
+            self.statusMessage.emit(f"Active Tool: {tool_labels[tool_type]}")
+
         self.update()
 
     def apply_crop(self):
@@ -1198,6 +1317,7 @@ class AnnotationCanvas(QWidget):
                     return
 
     def mousePressEvent(self, event: QMouseEvent):
+        self.setFocus()
         if not self._base_image:
             return
 
@@ -1423,31 +1543,98 @@ class AnnotationCanvas(QWidget):
 
     def keyPressEvent(self, event: QKeyEvent):
         key = event.key()
-        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+        modifiers = event.modifiers()
+        has_ctrl = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+        has_shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+        has_alt = bool(modifiers & Qt.KeyboardModifier.AltModifier)
+
+        # 1. Z-Order ordering (Home, End, PageUp, PageDown)
+        if key == Qt.Key.Key_Home:
+            if self.selected_annotation:
+                self.move_selected_to_top()
+                event.accept()
+                return
+        elif key == Qt.Key.Key_End:
+            if self.selected_annotation:
+                self.move_selected_to_bottom()
+                event.accept()
+                return
+        elif key == Qt.Key.Key_PageUp:
+            if self.selected_annotation:
+                self.move_selected_up()
+                event.accept()
+                return
+        elif key == Qt.Key.Key_PageDown:
+            if self.selected_annotation:
+                self.move_selected_down()
+                event.accept()
+                return
+
+        # 2. Deletion (Delete / Backspace, Shift+Delete for all)
+        elif key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            if has_shift:
+                self.delete_all_annotations()
+            else:
+                self.delete_selected()
+            event.accept()
+            return
+
+        # 3. Duplicate shape (Ctrl+D)
+        elif has_ctrl and key == Qt.Key.Key_D:
+            self.duplicate_selected()
+            event.accept()
+            return
+
+        # 4. Arrow keys: Move or Resize current shape
+        elif key in (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down):
+            if self.selected_annotation:
+                step = 10 if has_shift else 1
+                dx = -step if key == Qt.Key.Key_Left else (step if key == Qt.Key.Key_Right else 0)
+                dy = -step if key == Qt.Key.Key_Up else (step if key == Qt.Key.Key_Down else 0)
+
+                if has_ctrl:
+                    self.resize_selected_from_bottom_right(dx, dy)
+                elif has_alt:
+                    self.resize_selected_from_top_left(dx, dy)
+                else:
+                    self.move_selected(dx, dy)
+                event.accept()
+                return
+
+        # 5. Crop Enter / Escape
+        elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             if self._creating_annotation and self._creating_annotation.tool_type == ToolType.CROP:
                 self.apply_crop()
+                event.accept()
                 return
-        elif key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
-            self.delete_selected()
         elif key == Qt.Key.Key_Escape:
             if self._creating_annotation and self._creating_annotation.tool_type == ToolType.CROP:
                 self.cancel_crop()
+                event.accept()
                 return
             if self.selected_annotation:
                 self.selected_annotation.is_selected = False
                 self.selected_annotation = None
                 self.selectionChanged.emit(None)
                 self.update()
-        elif event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                event.accept()
+                return
+
+        # 6. Undo / Redo
+        elif has_ctrl:
             if key == Qt.Key.Key_Z:
-                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                if has_shift:
                     self.redo()
                 else:
                     self.undo()
+                event.accept()
+                return
             elif key == Qt.Key.Key_Y:
                 self.redo()
-        else:
-            super().keyPressEvent(event)
+                event.accept()
+                return
+
+        super().keyPressEvent(event)
 
     def paintEvent(self, event: QPaintEvent):
         painter = QPainter(self)

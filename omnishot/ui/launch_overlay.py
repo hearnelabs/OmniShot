@@ -459,6 +459,26 @@ class SpectacleLaunchOverlay(QWidget):
         elif key == Qt.Key.Key_M:
             if self._selected_rect and self._selected_rect.width() > 10 and self._selected_rect.height() > 10:
                 self._confirm_scroll(False)
+        elif key in range(Qt.Key.Key_1, Qt.Key.Key_9 + 1):
+            screen_idx = key - Qt.Key.Key_1
+            screens = QGuiApplication.screens()
+            if screen_idx < len(screens):
+                s = screens[screen_idx]
+                geom = s.geometry()
+                if self.coordinator:
+                    self.coordinator.confirm_screen_selection(geom)
+                else:
+                    self.close()
+                    self.snapshotConfirmed.emit(geom, None)
+        elif key in (Qt.Key.Key_AsciiTilde, Qt.Key.Key_Dead_Tilde, Qt.Key.Key_0):
+            s = self._target_screen or self.screen() or QGuiApplication.primaryScreen()
+            if s:
+                geom = s.geometry()
+                if self.coordinator:
+                    self.coordinator.confirm_screen_selection(geom)
+                else:
+                    self.close()
+                    self.snapshotConfirmed.emit(geom, None)
         else:
             super().keyPressEvent(event)
 
@@ -1063,6 +1083,11 @@ class MultiScreenOverlayCoordinator(QObject):
     def confirm_fullscreen(self):
         self.close_all()
         self.fullscreenConfirmed.emit()
+
+    def confirm_screen_selection(self, screen_geom: QRect):
+        img = self.capture_backend.capture_area(screen_geom.x(), screen_geom.y(), screen_geom.width(), screen_geom.height())
+        self.close_all()
+        self.snapshotConfirmed.emit(screen_geom, img)
 
     def confirm_window(self):
         self.close_all()
