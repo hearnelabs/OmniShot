@@ -124,15 +124,7 @@ ln -sf "$SCRIPT_DIR/bin/omnishot" "$HOME/.local/bin/omnishot"
 
 # 5. Configure KDE Plasma 6 Global Shortcuts & Refresh Shell
 echo "[5/6] Registering KDE Plasma 6 Shortcuts and refreshing icon caches..."
-if command -v kwriteconfig6 &>/dev/null; then
-    # Standard OmniShot hotkey: Meta+Shift+S (Spectacle default)
-    kwriteconfig6 --file kglobalshortcutsrc --group "omnishot.desktop" --key "_k_friendly_name" "OmniShot"
-    kwriteconfig6 --file kglobalshortcutsrc --group "omnishot.desktop" --key "RectangularRegionScreenShot" "Meta+Shift+S\tPrint,none,Capture Rectangular Region"
-    kwriteconfig6 --file kglobalshortcutsrc --group "omnishot.desktop" --key "ScrollingCapture" "Meta+Shift+R,none,Scrolling Capture"
-    kwriteconfig6 --file kglobalshortcutsrc --group "omnishot.desktop" --key "FullScreenScreenShot" "Shift+Print,none,Capture Entire Desktop"
-    kwriteconfig6 --file kglobalshortcutsrc --group "omnishot.desktop" --key "ActiveWindowScreenShot" "Meta+Print,none,Capture Active Window"
-    kwriteconfig6 --file kglobalshortcutsrc --group "omnishot.desktop" --key "OpenImageEditor" "Meta+Shift+E,none,Open Image Editor"
-fi
+python3 -c "from omnishot.core.config import OmniShotConfig; OmniShotConfig.load().apply_kde_shortcuts()"
 
 if command -v gtk-update-icon-cache &>/dev/null; then
     gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" &>/dev/null || true

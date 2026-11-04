@@ -74,59 +74,88 @@ class OmniShotConfig:
         # 1. Update kglobalshortcutsrc via kwriteconfig6
         if shutil.which("kwriteconfig6"):
             try:
-                subprocess.run([
-                    "kwriteconfig6", "--file", "kglobalshortcutsrc",
-                    "--group", "services", "--group", "omnishot.desktop",
-                    "--key", "_launch", f"{self.shortcut_launch},none,OmniShot"
-                ], check=False)
-                subprocess.run([
-                    "kwriteconfig6", "--file", "kglobalshortcutsrc",
-                    "--group", "services", "--group", "omnishot.desktop",
-                    "--key", "ScrollingCapture", f"{self.shortcut_scrolling},none,Scrolling Capture (Auto)"
-                ], check=False)
-                subprocess.run([
-                    "kwriteconfig6", "--file", "kglobalshortcutsrc",
-                    "--group", "services", "--group", "omnishot.desktop",
-                    "--key", "RectangularRegionScreenShot", f"{self.shortcut_region},none,Capture Rectangular Region"
-                ], check=False)
-                subprocess.run([
-                    "kwriteconfig6", "--file", "kglobalshortcutsrc",
-                    "--group", "services", "--group", "omnishot.desktop",
-                    "--key", "FullScreenScreenShot", f"{self.shortcut_fullscreen},none,Capture Entire Desktop"
-                ], check=False)
-                subprocess.run([
-                    "kwriteconfig6", "--file", "kglobalshortcutsrc",
-                    "--group", "services", "--group", "omnishot.desktop",
-                    "--key", "ActiveWindowScreenShot", f"{self.shortcut_window},none,Capture Active Window"
-                ], check=False)
-                subprocess.run([
-                    "kwriteconfig6", "--file", "kglobalshortcutsrc",
-                    "--group", "services", "--group", "omnishot.desktop",
-                    "--key", "OpenImageEditor", f"{self.shortcut_editor},none,Open Image Editor"
-                ], check=False)
+                # Write to both [services][omnishot.desktop] and fallback [omnishot.desktop]
+                for grp in [["services", "omnishot.desktop"], ["omnishot.desktop"]]:
+                    base_cmd = ["kwriteconfig6", "--file", "kglobalshortcutsrc"]
+                    for g in grp:
+                        base_cmd.extend(["--group", g])
+
+                    subprocess.run(base_cmd + ["--key", "_launch", f"{self.shortcut_launch},none,OmniShot"], check=False)
+                    subprocess.run(base_cmd + ["--key", "OpenImageEditor", f"{self.shortcut_editor},none,Open Image Editor"], check=False)
+                    subprocess.run(base_cmd + ["--key", "ScrollingCapture", f"{self.shortcut_scrolling},none,Scrolling Capture (Auto)"], check=False)
+                    subprocess.run(base_cmd + ["--key", "RectangularRegionScreenShot", f"{self.shortcut_region},none,Capture Rectangular Region"], check=False)
+                    subprocess.run(base_cmd + ["--key", "FullScreenScreenShot", f"{self.shortcut_fullscreen},none,Capture Entire Desktop"], check=False)
+                    subprocess.run(base_cmd + ["--key", "ActiveWindowScreenShot", f"{self.shortcut_window},none,Capture Active Window"], check=False)
             except Exception as e:
                 print(f"[OmniShot] Warning: Could not update kglobalshortcutsrc: {e}")
 
-        # 2. Update .desktop file
+        # 2. Update .desktop file with X-KDE-Shortcuts across all actions
         desktop_file = Path.home() / ".local/share/applications/omnishot.desktop"
         if desktop_file.exists():
             try:
+                action_shortcuts = {
+                    "[Desktop Entry]": self.shortcut_launch,
+                    "[Desktop Action OpenImageEditor]": self.shortcut_editor,
+                    "[Desktop Action ScrollingCapture]": self.shortcut_scrolling,
+                    "[Desktop Action RectangularRegionScreenShot]": self.shortcut_region,
+                    "[Desktop Action FullScreenScreenShot]": self.shortcut_fullscreen,
+                    "[Desktop Action ActiveWindowScreenShot]": self.shortcut_window,
+                }
                 lines = desktop_file.read_text(encoding="utf-8").splitlines()
                 new_lines = []
                 current_section = ""
+                has_shortcut_in_section = False
+
                 for line in lines:
                     if line.startswith("[") and line.endswith("]"):
+                        if current_section in action_shortcuts and not has_shortcut_in_section:
+                            new_lines.append(f"X-KDE-Shortcuts={action_shortcuts[current_section]}")
                         current_section = line
+                        has_shortcut_in_section = False
                         new_lines.append(line)
-                    elif line.startswith("X-KDE-Shortcuts=") and current_section == "[Desktop Entry]":
-                        new_lines.append(f"X-KDE-Shortcuts={self.shortcut_launch}")
+                    elif line.startswith("X-KDE-Shortcuts="):
+                        if current_section in action_shortcuts:
+                            new_lines.append(f"X-KDE-Shortcuts={action_shortcuts[current_section]}")
+                            has_shortcut_in_section = True
                     else:
                         new_lines.append(line)
+
+                if current_section in action_shortcuts and not has_shortcut_in_section:
+                    new_lines.append(f"X-KDE-Shortcuts={action_shortcuts[current_section]}")
+
                 desktop_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
             except Exception as e:
                 print(f"[OmniShot] Warning: Could not update desktop entry: {e}")
 
-        # 3. Reload KDE system configuration cache
+        # 3. Direct D-Bus registration with org.kde.kglobalaccel for instant live activation
+        try:
+            import dbus
+            bus = dbus.SessionBus()
+            kg = bus.get_object("org.kde.kglobalaccel", "/kglobalaccel")
+            iface = dbus.Interface(kg, "org.kde.KGlobalAccel")
+
+            from PySide6.QtGui import QKeySequence
+
+            shortcuts_map = [
+                ("_launch", "OmniShot", self.shortcut_launch),
+                ("OpenImageEditor", "Open Image Editor", self.shortcut_editor),
+                ("ScrollingCapture", "Scrolling Capture (Auto)", self.shortcut_scrolling),
+                ("RectangularRegionScreenShot", "Capture Rectangular Region", self.shortcut_region),
+                ("FullScreenScreenShot", "Capture Entire Desktop", self.shortcut_fullscreen),
+                ("ActiveWindowScreenShot", "Capture Active Window", self.shortcut_window),
+            ]
+            for action_name, label, seq_str in shortcuts_map:
+                action_id = ["omnishot.desktop", action_name, "OmniShot", label]
+                iface.doRegister(action_id)
+                if seq_str and seq_str.lower() != "none":
+                    ks = QKeySequence(seq_str)
+                    if ks.count() > 0:
+                        key_int = int(ks[0].toCombined())
+                        iface.setForeignShortcut(action_id, dbus.Array([dbus.Int32(key_int)], signature="i"))
+        except Exception:
+            pass
+
+        # 4. Reload KDE system configuration cache
         if shutil.which("kbuildsycoca6"):
             try:
                 subprocess.run(["kbuildsycoca6", "--noincremental"], check=False)

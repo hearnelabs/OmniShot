@@ -17,11 +17,13 @@ X-KDE-Wayland-Interfaces=org_kde_plasma_window_management,zkde_screencast_unstab
 Name=Open Image Editor
 Exec=omnishot -e
 Icon=omnishot
+X-KDE-Shortcuts=Meta+Shift+E
 
 [Desktop Action ScrollingCapture]
 Name=Scrolling Capture (Auto)
 Exec=omnishot -S
 Icon=omnishot
+X-KDE-Shortcuts=Meta+Shift+R
 
 [Desktop Action ManualScrollingCapture]
 Name=Scrolling Capture (Manual)
@@ -32,13 +34,16 @@ Icon=omnishot
 Name=Capture Rectangular Region
 Exec=omnishot -r
 Icon=omnishot
+X-KDE-Shortcuts=Meta+Shift+S
 
 [Desktop Action ActiveWindowScreenShot]
 Name=Capture Active Window
 Exec=omnishot -a
 Icon=omnishot
+X-KDE-Shortcuts=Meta+Print
 
 [Desktop Action FullScreenScreenShot]
 Name=Capture Entire Desktop
 Exec=omnishot -f
 Icon=omnishot
+X-KDE-Shortcuts=Shift+Print

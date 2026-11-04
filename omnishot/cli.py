@@ -14,7 +14,7 @@ from PySide6.QtCore import QTimer
 from .core.config import OmniShotConfig
 from .app import OmniShotApp
 
-__version__ = "1.0.7"
+__version__ = "1.0.8"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
