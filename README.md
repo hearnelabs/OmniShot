@@ -2,7 +2,8 @@
   <img src="omnishot.svg" width="136" height="136" alt="OmniShot Logo" />
   <h1>OmniShot</h1>
   <p><strong>The Next-Generation Screenshot & Scrolling Capture Suite for KDE Plasma 6 (Wayland)</strong></p>
-  <p><em>Created by HearneLabs, inspired by Spectacle/ShareX, fuelled by caffeine ☕</em></p>
+  <p><em>Created by <a href="https://github.com/hearnelabs">HearneLabs</a> in collaboration with <a href="https://github.com/BeanzCraftz">BeanzCraftz</a> (Testing & Ideas)</em><br />
+  <em>Inspired by Spectacle/ShareX, fuelled by caffeine ☕</em></p>
 
   <p>
     <a href="https://github.com/hearnelabs/OmniShot/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-GPL%20v3-blue.svg?style=flat-square" alt="License: GPLv3" /></a>
@@ -273,7 +274,7 @@ To run the automated verification suite:
 python3 -m unittest discover tests -v
 ```
 
-All 11 unit tests validate:
+All 19 unit tests validate:
 - Native C stitcher exact pixel displacement and margin detection
 - `/dev/uinput` virtual device initialization and event emission
 - KWin ScreenShot2 native Wayland screencopy
@@ -288,6 +289,7 @@ All 11 unit tests validate:
 ## 📜 License & Credits
 
 - **Created by**: [HearneLabs](https://github.com/hearnelabs)
+- **Collaborator**: [BeanzCraftz](https://github.com/BeanzCraftz) (Version Testing, Feature Ideas & QA)
 - **Inspiration**: [KDE Spectacle](https://apps.kde.org/spectacle/) & [ShareX](https://getsharex.com/)
 - **Fuel**: Caffeine ☕
 - **License**: [GNU General Public License v3.0](LICENSE)
