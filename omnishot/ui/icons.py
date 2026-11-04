@@ -25,6 +25,7 @@ def get_tool_icon(tool_name: str) -> QIcon:
         "dropper": "color-picker",
         "paste": "edit-paste",
         "copy": "edit-copy",
+        "open": "document-open",
     }
     if tool_name in theme_map:
         ic = QIcon.fromTheme(theme_map[tool_name])
@@ -189,6 +190,15 @@ def get_tool_icon(tool_name: str) -> QIcon:
         p.drawLine(QPointF(16, 20), QPointF(16, 25))
         p.setBrush(QBrush(QColor("#ffffff")))
         p.drawPolygon(QPolygonF([QPointF(16, 26), QPointF(13, 23), QPointF(19, 23)]))
+
+    elif tool_name == "open":
+        p.setPen(QPen(QColor("#f39c12"), 1.8))
+        p.setBrush(QBrush(QColor(243, 156, 18, 60)))
+        folder_poly = QPolygonF([
+            QPointF(5, 9), QPointF(12, 9), QPointF(15, 12),
+            QPointF(27, 12), QPointF(27, 24), QPointF(5, 24)
+        ])
+        p.drawPolygon(folder_poly)
 
     elif tool_name == "ocr":
         # Viewfinder corners

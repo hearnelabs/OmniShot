@@ -42,6 +42,7 @@ class OmniShotConfig:
     shortcut_region: str = "Meta+Shift+R"
     shortcut_fullscreen: str = "Print"
     shortcut_window: str = "Meta+Print"
+    shortcut_editor: str = "Meta+Shift+E"
 
     @classmethod
     def load(cls) -> "OmniShotConfig":
@@ -97,6 +98,11 @@ class OmniShotConfig:
                     "kwriteconfig6", "--file", "kglobalshortcutsrc",
                     "--group", "services", "--group", "omnishot.desktop",
                     "--key", "ActiveWindowScreenShot", f"{self.shortcut_window},none,Capture Active Window"
+                ], check=False)
+                subprocess.run([
+                    "kwriteconfig6", "--file", "kglobalshortcutsrc",
+                    "--group", "services", "--group", "omnishot.desktop",
+                    "--key", "OpenImageEditor", f"{self.shortcut_editor},none,Open Image Editor"
                 ], check=False)
             except Exception as e:
                 print(f"[OmniShot] Warning: Could not update kglobalshortcutsrc: {e}")

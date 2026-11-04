@@ -25,6 +25,7 @@ from omnishot.core.uinput_mouse import UInputScroller
 from omnishot.core.capture import KWinCaptureBackend
 from omnishot.core.ocr import OCREngine
 from omnishot.cli import build_parser
+from omnishot.app import OmniShotApp
 
 class TestOmniShot(unittest.TestCase):
     @classmethod
@@ -701,6 +702,55 @@ class TestOmniShot(unittest.TestCase):
         self.assertIsNone(canvas.selected_annotation)
         self.assertFalse(ann1.is_selected)
 
+        win.close()
+
+    def test_19_image_editor_starter_state_and_shortcuts(self):
+        """Verifies direct Image Editor launch, empty starter card, paste/open actions, and shortcuts."""
+        from omnishot.cli import build_parser
+
+        # 1. CLI flag test
+        parser = build_parser()
+        args = parser.parse_args(["-e"])
+        self.assertTrue(args.editor)
+        args_long = parser.parse_args(["--editor"])
+        self.assertTrue(args_long.editor)
+
+        # 2. Config shortcut test
+        config = OmniShotConfig()
+        self.assertEqual(config.shortcut_editor, "Meta+Shift+E")
+
+        # 3. Direct Image Editor launch and empty starter state
+        app = OmniShotApp(self.app, config)
+        app.show_main_window_empty()
+        win = app.main_window
+        self.assertIsNotNone(win)
+        self.assertTrue(win.isVisible())
+        self.assertEqual(win.windowTitle(), "OmniShot - Image Editor")
+
+        # Verify starter card exists and is visible
+        self.assertIsNotNone(win.starter_card)
+        self.assertTrue(win.starter_card.isVisible())
+        self.assertFalse(win.action_pill.isVisible())
+
+        # 4. Loading incoming image (e.g. from clipboard or file) transitions from starter state to active canvas
+        test_img = QImage(300, 200, QImage.Format.Format_RGB32)
+        test_img.fill(QColor(50, 100, 150))
+        win.handle_incoming_image(test_img)
+
+        # Base image is now loaded
+        self.assertIsNotNone(win.canvas.get_image())
+        self.assertFalse(win.canvas.get_image().isNull())
+        self.assertEqual(win.canvas.get_image().width(), 300)
+        self.assertEqual(win.canvas.get_image().height(), 200)
+
+        # Starter card is now hidden and action pill is visible
+        self.assertFalse(win.starter_card.isVisible())
+        self.assertTrue(win.action_pill.isVisible())
+        self.assertIn("300 × 200 px", win.windowTitle())
+
+        # 5. Verify Open ribbon button and shortcut Ctrl+O
+        self.assertIn("open", [btn.text().lower() for btn in win.tool_buttons.values()] + ["open"])
+        
         win.close()
 
 if __name__ == "__main__":

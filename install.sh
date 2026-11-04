@@ -131,6 +131,7 @@ if command -v kwriteconfig6 &>/dev/null; then
     kwriteconfig6 --file kglobalshortcutsrc --group "omnishot.desktop" --key "ScrollingCapture" "Meta+Shift+R,none,Scrolling Capture"
     kwriteconfig6 --file kglobalshortcutsrc --group "omnishot.desktop" --key "FullScreenScreenShot" "Shift+Print,none,Capture Entire Desktop"
     kwriteconfig6 --file kglobalshortcutsrc --group "omnishot.desktop" --key "ActiveWindowScreenShot" "Meta+Print,none,Capture Active Window"
+    kwriteconfig6 --file kglobalshortcutsrc --group "omnishot.desktop" --key "OpenImageEditor" "Meta+Shift+E,none,Open Image Editor"
 fi
 
 if command -v gtk-update-icon-cache &>/dev/null; then

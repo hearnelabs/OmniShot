@@ -14,7 +14,7 @@ from PySide6.QtCore import QTimer
 from .core.config import OmniShotConfig
 from .app import OmniShotApp
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -24,6 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
     
     # Capture modes
+    parser.add_argument("-e", "--editor", action="store_true", help="Launch directly into Image Editor mode")
     parser.add_argument("-S", "--scroll", action="store_true", help="Launch directly into Auto-Scrolling Capture mode")
     parser.add_argument("-M", "--manual-scroll", action="store_true", help="Launch directly into Manual Scrolling Capture mode")
     parser.add_argument("-r", "--region", action="store_true", help="Capture a rectangular region of the screen")
@@ -71,6 +72,8 @@ def main():
                     return
             print(f"[OmniShot] Could not load image: {args.edit_existing}")
             controller.launch_interactive()
+        elif args.editor:
+            controller.show_main_window_empty()
         elif args.scroll:
             controller.trigger_capture("scroll_auto")
         elif args.manual_scroll:

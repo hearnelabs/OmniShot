@@ -60,6 +60,14 @@ class OmniShotApp(QObject):
         mw.raise_()
         mw.activateWindow()
 
+    def show_main_window_empty(self):
+        """Displays the OmniShot editor directly in starter mode with Paste and Open File options."""
+        mw = self.get_or_create_main_window()
+        mw.show_empty_editor()
+        mw.show()
+        mw.raise_()
+        mw.activateWindow()
+
     def _get_active_screen(self):
         """Identifies the active display screen based on KWin active output or cursor pos."""
         # 1. Authoritative KWin Wayland active output

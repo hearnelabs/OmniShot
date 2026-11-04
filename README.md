@@ -139,6 +139,9 @@ omnishot -a
 # Capture the entire desktop workspace
 omnishot -f
 
+# Launch directly into the Image Editor (Paste clipboard or Open file)
+omnishot -e
+
 # Open an existing image in the annotator
 omnishot -E ~/Pictures/Screenshots/capture.png
 ```
@@ -149,6 +152,7 @@ omnishot -E ~/Pictures/Screenshots/capture.png
 | :--- | :--- |
 | `Meta + Shift + S` / `Print` | Open In-Situ Snip / Scrolling Overlay |
 | `Meta + Shift + R` | Start Scrolling Capture immediately |
+| `Meta + Shift + E` | Open Image Editor directly (Paste clipboard or Open file) |
 | `Shift + Print` | Capture Entire Desktop |
 | `Meta + Print` | Capture Active Window |
 
@@ -185,6 +189,7 @@ omnishot -E ~/Pictures/Screenshots/capture.png
 | `Home` / `End` | Bring selected shape to front / send to back |
 | `Page Up` / `Page Down` | Raise / lower selected shape one level in Z-order |
 | `Ctrl + Z` / `Ctrl + Y` | Undo / Redo annotation (`Ctrl + Shift + Z` also supported) |
+| `Ctrl + O` | Open image file... |
 | `Ctrl + C` | Copy composite image to clipboard |
 | `Ctrl + V` | Paste image (expand Right/Down/Left/Up or add as Overlay) |
 | `Ctrl + S` | Quick save to configured screenshots directory |

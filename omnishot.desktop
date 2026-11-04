@@ -8,10 +8,15 @@ Type=Application
 StartupNotify=false
 Categories=Utility;Graphics;Photography;
 Keywords=snapshot;capture;print;screenshot;snipping;scroll;scrolling;stitch;
-Actions=ScrollingCapture;ManualScrollingCapture;RectangularRegionScreenShot;ActiveWindowScreenShot;FullScreenScreenShot;
+Actions=OpenImageEditor;ScrollingCapture;ManualScrollingCapture;RectangularRegionScreenShot;ActiveWindowScreenShot;FullScreenScreenShot;
 X-KDE-Shortcuts=Meta+Shift+S
 X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
 X-KDE-Wayland-Interfaces=org_kde_plasma_window_management,zkde_screencast_unstable_v1
+
+[Desktop Action OpenImageEditor]
+Name=Open Image Editor
+Exec=omnishot -e
+Icon=omnishot
 
 [Desktop Action ScrollingCapture]
 Name=Scrolling Capture (Auto)

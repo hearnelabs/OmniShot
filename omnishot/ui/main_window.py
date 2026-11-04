@@ -333,11 +333,128 @@ class PropertiesSidebar(QScrollArea):
         self.opacityChanged.emit(val)
 
 
+class EditorStarterWidget(QFrame):
+    """
+    Starter hero card displayed inside the viewport when opening OmniShot Image Editor without an initial image.
+    Provides immediate 1-click or hotkey options:
+    - Paste from Clipboard (Ctrl+V)
+    - Open Image File... (Ctrl+O)
+    - Drag & Drop hint
+    """
+    pasteClicked = Signal()
+    openClicked = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("editorStarterCard")
+        self.setStyleSheet("""
+            QFrame#editorStarterCard {
+                background-color: rgba(26, 29, 36, 0.95);
+                border: 2px dashed #3a4150;
+                border-radius: 16px;
+                padding: 24px;
+            }
+            QFrame#editorStarterCard:hover {
+                border-color: #3daee9;
+            }
+            QLabel#starterTitle {
+                color: #ffffff;
+                font-size: 18px;
+                font-weight: 700;
+            }
+            QLabel#starterSubtitle {
+                color: #8fa0b5;
+                font-size: 13px;
+            }
+            QLabel#starterDropHint {
+                color: #637282;
+                font-size: 12px;
+                font-style: italic;
+            }
+            QPushButton.starterBtn {
+                background-color: #242933;
+                border: 1px solid #3d4659;
+                border-radius: 8px;
+                color: #ffffff;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 10px 20px;
+                min-width: 190px;
+            }
+            QPushButton.starterBtn:hover {
+                background-color: #2d3442;
+                border-color: #3daee9;
+                color: #3daee9;
+            }
+            QPushButton.starterBtnPrimary {
+                background-color: #0078d4;
+                border: 1px solid #1a8ad9;
+                border-radius: 8px;
+                color: #ffffff;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 10px 20px;
+                min-width: 190px;
+            }
+            QPushButton.starterBtnPrimary:hover {
+                background-color: #1084d8;
+                border-color: #60cdff;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setSpacing(16)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Header Icon + Title
+        lbl_icon = QLabel("🖼️", self)
+        lbl_icon.setStyleSheet("font-size: 42px; background: transparent;")
+        lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(lbl_icon)
+
+        lbl_title = QLabel("OmniShot Image Editor", self)
+        lbl_title.setObjectName("starterTitle")
+        lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(lbl_title)
+
+        lbl_sub = QLabel("Paste an image from your clipboard or open a file to start editing", self)
+        lbl_sub.setObjectName("starterSubtitle")
+        lbl_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(lbl_sub)
+
+        # Action Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(14)
+        btn_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.btn_paste = QPushButton("📋 Paste Clipboard (Ctrl+V)", self)
+        self.btn_paste.setProperty("class", "starterBtnPrimary")
+        self.btn_paste.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_paste.clicked.connect(self.pasteClicked.emit)
+        btn_layout.addWidget(self.btn_paste)
+
+        self.btn_open = QPushButton("📂 Open Image... (Ctrl+O)", self)
+        self.btn_open.setProperty("class", "starterBtn")
+        self.btn_open.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_open.clicked.connect(self.openClicked.emit)
+        btn_layout.addWidget(self.btn_open)
+
+        layout.addLayout(btn_layout)
+
+        # Drop Hint
+        lbl_drop = QLabel("or drag & drop an image file anywhere onto this window", self)
+        lbl_drop.setObjectName("starterDropHint")
+        lbl_drop.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(lbl_drop)
+
+
 class ViewportContainer(QWidget):
-    """Container holding the scrollable canvas and anchoring the floating bottom action pill."""
+    """Container holding the scrollable canvas and anchoring the floating bottom action pill & starter state."""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.action_pill: Optional[QWidget] = None
+        self.starter_card: Optional[QWidget] = None
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(0)
@@ -350,12 +467,45 @@ class ViewportContainer(QWidget):
         pill.setParent(self)
         self.reposition_pill()
 
+    def set_starter_card(self, card: QWidget):
+        self.starter_card = card
+        card.setParent(self)
+        card.hide()
+        self.reposition_starter_card()
+
+    def show_starter_state(self):
+        if self.starter_card:
+            self.starter_card.show()
+            self.starter_card.raise_()
+            self.reposition_starter_card()
+        if self.action_pill:
+            self.action_pill.hide()
+
+    def hide_starter_state(self):
+        if self.starter_card:
+            self.starter_card.hide()
+        if self.action_pill:
+            self.action_pill.show()
+            self.reposition_pill()
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.reposition_pill()
+        self.reposition_starter_card()
+
+    def reposition_starter_card(self):
+        if not self.starter_card or not self.starter_card.isVisible():
+            return
+        hint = self.starter_card.sizeHint()
+        cw = min(hint.width(), max(240, self.width() - 48))
+        ch = hint.height()
+        cx = max(16, (self.width() - cw) // 2)
+        cy = max(16, (self.height() - ch) // 2)
+        self.starter_card.setGeometry(cx, cy, cw, ch)
+        self.starter_card.raise_()
 
     def reposition_pill(self):
-        if not self.action_pill:
+        if not self.action_pill or not self.action_pill.isVisible():
             return
         pill_hint = self.action_pill.sizeHint()
         pw = pill_hint.width()
@@ -448,6 +598,12 @@ class OmniShotMainWindow(QMainWindow):
         # 4. Bottom Floating Action Pill (OmniShot signature capsule)
         self._create_bottom_action_pill()
         self.viewport_container.set_action_pill(self.action_pill)
+
+        # 5. Empty Editor Starter Card
+        self.starter_card = EditorStarterWidget(self.viewport_container)
+        self.starter_card.pasteClicked.connect(self.paste_from_clipboard)
+        self.starter_card.openClicked.connect(self.open_image_file)
+        self.viewport_container.set_starter_card(self.starter_card)
 
     def _create_top_header(self) -> QFrame:
         """Top bar with horizontal scrollable tools ribbon on left and fixed utility controls on right."""
@@ -598,6 +754,17 @@ class OmniShotMainWindow(QMainWindow):
         btn_scroll.clicked.connect(lambda: self.requestCapture.emit("scroll_auto"))
         grp_output.add_widget(btn_scroll)
 
+        btn_open = QToolButton(ribbon)
+        btn_open.setProperty("class", "ribbonBtn")
+        btn_open.setText("Open")
+        btn_open.setIcon(get_tool_icon("open"))
+        btn_open.setIconSize(QSize(20, 20))
+        btn_open.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        btn_open.setFixedSize(46, 46)
+        btn_open.setToolTip("Open Image File... (Ctrl+O)")
+        btn_open.clicked.connect(self.open_image_file)
+        grp_output.add_widget(btn_open)
+
         btn_copy = QToolButton(ribbon)
         btn_copy.setProperty("class", "ribbonBtn")
         btn_copy.setText("Copy")
@@ -701,6 +868,15 @@ class OmniShotMainWindow(QMainWindow):
         self.btn_copy.clicked.connect(self.copy_to_clipboard)
         layout.addWidget(self.btn_copy)
 
+        self.btn_open = QToolButton(self.action_pill)
+        self.btn_open.setObjectName("pillActionBtn")
+        self.btn_open.setIcon(get_tool_icon("open"))
+        self.btn_open.setIconSize(QSize(18, 18))
+        self.btn_open.setFixedSize(30, 30)
+        self.btn_open.setToolTip("Open Image File... (Ctrl+O)")
+        self.btn_open.clicked.connect(self.open_image_file)
+        layout.addWidget(self.btn_open)
+
         self.btn_paste = QToolButton(self.action_pill)
         self.btn_paste.setObjectName("pillActionBtn")
         self.btn_paste.setIcon(get_tool_icon("paste"))
@@ -751,14 +927,17 @@ class OmniShotMainWindow(QMainWindow):
         super().resizeEvent(event)
         if hasattr(self, "viewport_container"):
             self.viewport_container.reposition_pill()
+            self.viewport_container.reposition_starter_card()
 
     def showEvent(self, event):
         super().showEvent(event)
         if hasattr(self, "viewport_container"):
             QTimer.singleShot(0, self.viewport_container.reposition_pill)
+            QTimer.singleShot(0, self.viewport_container.reposition_starter_card)
 
     def _setup_shortcuts(self):
         # File & Action shortcuts
+        QShortcut(QKeySequence("Ctrl+O"), self, self.open_image_file)
         QShortcut(QKeySequence("Ctrl+C"), self, self.copy_to_clipboard)
         QShortcut(QKeySequence("Ctrl+V"), self, self.paste_from_clipboard)
         QShortcut(QKeySequence("Ctrl+S"), self, self.quick_save)
@@ -980,10 +1159,36 @@ class OmniShotMainWindow(QMainWindow):
         if img and not img.isNull():
             self.setWindowTitle(f"OmniShot - [Current Screenshot] - {img.width()} × {img.height()} px")
         else:
-            self.setWindowTitle("OmniShot - [Current Screenshot]")
+            self.setWindowTitle("OmniShot - Image Editor")
+
+    def show_empty_editor(self):
+        """Displays editor in starter state with Paste & Open File options."""
+        self._update_window_title()
+        self.viewport_container.show_starter_state()
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def open_image_file(self):
+        """Prompts user to select an existing image file to load into the editor."""
+        last_dir = self.config.save_directory or str(Path.home() / "Pictures")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Image File",
+            last_dir,
+            "Images (*.png *.jpg *.jpeg *.bmp *.webp *.svg);;All Files (*)"
+        )
+        if file_path:
+            img = QImage(file_path)
+            if not img.isNull():
+                self.handle_incoming_image(img)
+                self.statusBar().showMessage(f"📂 Opened {Path(file_path).name} ({img.width()} × {img.height()} px)", 3500)
+            else:
+                QMessageBox.warning(self, "Failed to Open", f"Could not load image from:\n{file_path}")
 
     def set_captured_image(self, image: QImage):
         self.canvas.set_image(image)
+        self.viewport_container.hide_starter_state()
         self._update_window_title()
         self.show()
         self.raise_()

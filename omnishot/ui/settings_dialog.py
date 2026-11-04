@@ -286,6 +286,9 @@ class OmniShotSettingsDialog(QDialog):
         self.key_window = QKeySequenceEdit(self)
         form_keys.addRow("Capture Active Window:", self.key_window)
 
+        self.key_editor = QKeySequenceEdit(self)
+        form_keys.addRow("Open Image Editor:", self.key_editor)
+
         layout.addWidget(grp_keys)
 
         # Shortcut Helper Buttons
@@ -426,6 +429,7 @@ class OmniShotSettingsDialog(QDialog):
         self.key_region.setKeySequence(QKeySequence(self.config.shortcut_region))
         self.key_fullscreen.setKeySequence(QKeySequence(self.config.shortcut_fullscreen))
         self.key_window.setKeySequence(QKeySequence(self.config.shortcut_window))
+        self.key_editor.setKeySequence(QKeySequence(getattr(self.config, "shortcut_editor", "Meta+Shift+E")))
 
         # Scrolling
         self.spin_scroll_step.setValue(self.config.scroll_step_pixels)
@@ -456,6 +460,7 @@ class OmniShotSettingsDialog(QDialog):
         self.key_region.setKeySequence(QKeySequence("Meta+Shift+R"))
         self.key_fullscreen.setKeySequence(QKeySequence("Print"))
         self.key_window.setKeySequence(QKeySequence("Meta+Print"))
+        self.key_editor.setKeySequence(QKeySequence("Meta+Shift+E"))
         self.lbl_status.setText("Shortcuts reset to defaults.")
 
     def _apply_kde_shortcuts_now(self):
@@ -469,6 +474,7 @@ class OmniShotSettingsDialog(QDialog):
         self.config.shortcut_region = self.key_region.keySequence().toString() or "Meta+Shift+R"
         self.config.shortcut_fullscreen = self.key_fullscreen.keySequence().toString() or "Print"
         self.config.shortcut_window = self.key_window.keySequence().toString() or "Meta+Print"
+        self.config.shortcut_editor = self.key_editor.keySequence().toString() or "Meta+Shift+E"
 
     def _save_and_apply(self):
         # 1. Update save directory & files
