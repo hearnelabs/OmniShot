@@ -1,7 +1,7 @@
 # Maintainer: HearneLabs <contact@hearnelabs.com>
 # Contributor: BeanzCraftz <https://github.com/BeanzCraftz>
 pkgname=omnishot
-pkgver=1.0.8
+pkgver=1.0.9
 pkgrel=1
 pkgdesc="Next-generation screenshot and seamless scrolling capture tool for KDE Plasma 6 on CachyOS / Arch"
 arch=('x86_64')
@@ -16,6 +16,7 @@ depends=(
     'libnotify'
     'tesseract'
     'tesseract-data-eng'
+    'ffmpeg'
 )
 makedepends=('gcc')
 source=()

@@ -20,6 +20,7 @@ REQUIRED_PKGS=(
     "libnotify"
     "tesseract"
     "tesseract-data-eng"
+    "ffmpeg"
     "gcc"
 )
 

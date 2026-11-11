@@ -56,6 +56,12 @@ It delivers the one killer feature that Linux desktop screenshot utilities have 
   - Sub-millisecond C/AVX2 multi-strip correlation engine stitches slices seamlessly without vertical artifacts or seam lines.
   - Floating status HUD with live pulsing recording indicator and dynamic expanding thumbnail preview.
   - Automatic end-of-scroll detection when the page hits bottom.
+- 🎥 **Spectacle-Grade Screen & Video Recording (Testing & Development Preview)**:
+  - High-performance MP4 (H.264 / AAC) and WebM (VP9 / Opus) video capture for full desktop workspace, active windows, or rectangular screen regions.
+  - Floating Breeze dark capsule HUD with live `⏺ REC` pulsing status, elapsed duration timer, pause/resume, and stop triggers.
+  - Dual audio channel capture: System / Desktop Audio (`@DEFAULT_SINK@.monitor`) and Microphone (`@DEFAULT_SOURCE@`) via PipeWire.
+  - Global start/stop toggle hotkey (`Meta+Shift+R` to start or immediately stop and finalize recording).
+  - *Notice: Screen recording is currently in an active development and testing phase—bugs or edge cases may be present while features mature.*
 - 🖥️ **Direct KWin Wayland Backend**:
   - Leverages `org.kde.KWin.ScreenShot2` pipe-based screencopy for zero-latency, high-speed captures.
   - Preserves 1:1 hardware pixel resolution across High-DPI screens and fractional scaling (1.25x, 1.5x, 2.0x).
