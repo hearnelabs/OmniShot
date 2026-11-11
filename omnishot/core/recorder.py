@@ -87,6 +87,9 @@ class CaptureWorkerThread(QThread):
         fps: int,
         stdin_pipe,
         include_cursor: bool = True,
+        target_w: Optional[int] = None,
+        target_h: Optional[int] = None,
+        first_frame: Optional[QImage] = None,
         parent=None
     ):
         super().__init__(parent)
@@ -97,6 +100,9 @@ class CaptureWorkerThread(QThread):
         self._running = True
         self._paused = False
         self.backend = get_capture_backend()
+        self.target_w = target_w or ((rect.width() // 2) * 2)
+        self.target_h = target_h or ((rect.height() // 2) * 2)
+        self.first_frame = first_frame
 
     def set_paused(self, paused: bool):
         self._paused = paused
@@ -109,6 +115,56 @@ class CaptureWorkerThread(QThread):
         w, h = self.rect.width(), self.rect.height()
         rx, ry = self.rect.x(), self.rect.y()
         frame_interval = 1.0 / max(1, self.fps)
+        expected_len = self.target_w * self.target_h * 4
+
+        def write_frame(img: QImage):
+            if img.width() != self.target_w or img.height() != self.target_h:
+                img = img.copy(0, 0, self.target_w, self.target_h)
+
+            if self.include_cursor:
+                cur_pos = QCursor.pos()
+                if self.rect.contains(cur_pos):
+                    # Scale cursor coordinates from logical to physical
+                    scale_x = self.target_w / max(1, w)
+                    scale_y = self.target_h / max(1, h)
+                    cx = int((cur_pos.x() - rx) * scale_x)
+                    cy = int((cur_pos.y() - ry) * scale_y)
+
+                    p = QPainter(img)
+                    p.setPen(QPen(QColor(0, 0, 0), 2))
+                    p.setBrush(QColor(255, 255, 255))
+                    points = [
+                        QPoint(cx, cy),
+                        QPoint(cx, cy + 16),
+                        QPoint(cx + 4, cy + 12),
+                        QPoint(cx + 9, cy + 19),
+                        QPoint(cx + 12, cy + 18),
+                        QPoint(cx + 7, cy + 11),
+                        QPoint(cx + 13, cy + 11),
+                    ]
+                    p.drawPolygon(points)
+                    p.end()
+
+            if img.format() != QImage.Format.Format_RGBA8888:
+                img = img.convertToFormat(QImage.Format.Format_RGBA8888)
+
+            if img.bytesPerLine() == self.target_w * 4:
+                raw_bytes = bytes(img.constBits())[:expected_len]
+            else:
+                raw_bytes = b"".join(bytes(img.scanLine(y))[:self.target_w * 4] for y in range(self.target_h))
+
+            if self._running and self.stdin_pipe and not self.stdin_pipe.closed:
+                self.stdin_pipe.write(raw_bytes)
+                self.stdin_pipe.flush()
+                self.frameCaptured.emit()
+
+        # Emit probe frame as frame #1 if available
+        if self.first_frame and not self.first_frame.isNull():
+            try:
+                write_frame(self.first_frame)
+            except Exception:
+                pass
+            self.first_frame = None
 
         t_next = time.time()
 
@@ -133,37 +189,7 @@ class CaptureWorkerThread(QThread):
                 if not img or img.isNull():
                     continue
 
-                if self.include_cursor:
-                    cur_pos = QCursor.pos()
-                    if self.rect.contains(cur_pos):
-                        # Draw standard arrow cursor onto image
-                        p = QPainter(img)
-                        cx = cur_pos.x() - rx
-                        cy = cur_pos.y() - ry
-                        
-                        # High-visibility cursor with black outline & white fill
-                        p.setPen(QPen(QColor(0, 0, 0), 2))
-                        p.setBrush(QColor(255, 255, 255))
-                        points = [
-                            QPoint(cx, cy),
-                            QPoint(cx, cy + 16),
-                            QPoint(cx + 4, cy + 12),
-                            QPoint(cx + 9, cy + 19),
-                            QPoint(cx + 12, cy + 18),
-                            QPoint(cx + 7, cy + 11),
-                            QPoint(cx + 13, cy + 11),
-                        ]
-                        p.drawPolygon(points)
-                        p.end()
-
-                if img.format() != QImage.Format.Format_RGBA8888:
-                    img = img.convertToFormat(QImage.Format.Format_RGBA8888)
-
-                raw_bytes = bytes(img.constBits())
-                if self._running and self.stdin_pipe and not self.stdin_pipe.closed:
-                    self.stdin_pipe.write(raw_bytes)
-                    self.stdin_pipe.flush()
-                    self.frameCaptured.emit()
+                write_frame(img)
             except BrokenPipeError:
                 break
             except Exception as e:
@@ -213,6 +239,9 @@ class ScreenRecordingSession(QObject):
         self.format = (self.config.record_format or "mp4").lower()
         self.output_dir = Path(self.config.record_directory or str(Path.home() / "Videos" / "Recordings"))
         self.output_path: Optional[Path] = None
+        self.backend = get_capture_backend()
+        self.target_w = (self.rect.width() // 2) * 2
+        self.target_h = (self.rect.height() // 2) * 2
 
         self.ffmpeg_proc: Optional[subprocess.Popen] = None
         self.worker: Optional[CaptureWorkerThread] = None
@@ -240,14 +269,29 @@ class ScreenRecordingSession(QObject):
         ext = "webm" if self.format == "webm" else "mp4"
         self.output_path = self.output_dir / f"OmniShot_{timestamp}.{ext}"
 
-        w, h = self.rect.width(), self.rect.height()
+        # Probe physical frame dimensions from compositor (crucial for fractional DPI / Wayland scaling)
+        probe = None
+        try:
+            probe = self.backend.capture_area(self.rect.x(), self.rect.y(), self.rect.width(), self.rect.height())
+        except Exception:
+            pass
 
-        # Build FFmpeg command line
+        if probe and not probe.isNull():
+            actual_w = (probe.width() // 2) * 2
+            actual_h = (probe.height() // 2) * 2
+        else:
+            actual_w = (self.rect.width() // 2) * 2
+            actual_h = (self.rect.height() // 2) * 2
+
+        self.target_w = actual_w
+        self.target_h = actual_h
+
+        # Build FFmpeg command line with exact physical dimensions
         cmd = [
             "ffmpeg", "-y",
             "-f", "rawvideo",
             "-vcodec", "rawvideo",
-            "-s", f"{w}x{h}",
+            "-s", f"{actual_w}x{actual_h}",
             "-pix_fmt", "rgba",
             "-r", str(self.fps),
             "-i", "-"
@@ -313,6 +357,9 @@ class ScreenRecordingSession(QObject):
             fps=self.fps,
             stdin_pipe=self.ffmpeg_proc.stdin,
             include_cursor=self.include_cursor,
+            target_w=actual_w,
+            target_h=actual_h,
+            first_frame=probe,
             parent=self
         )
         self.worker.workerError.connect(self._on_worker_error)
