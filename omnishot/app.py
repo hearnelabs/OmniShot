@@ -16,9 +16,15 @@ from .core.capture import get_capture_backend
 from .core.uinput_mouse import UInputScroller
 from .core.stitcher import ScrollingStitcher
 from .core.clipboard import copy_image_to_clipboard, ClipboardPersistenceKeeper
+from .core.recorder import (
+    ScreenRecordingSession,
+    is_recording_in_progress,
+    request_stop_active_recording
+)
 from .ui.main_window import OmniShotMainWindow
 from .ui.snip_overlay import SnipSelectionOverlay
 from .ui.scroll_hud import ScrollingCaptureHUD
+from .ui.record_hud import RecordHUD, RecordRegionOutline
 from .ui.launch_overlay import SpectacleLaunchOverlay, MultiScreenOverlayCoordinator
 
 class OmniShotApp(QObject):
@@ -41,6 +47,11 @@ class OmniShotApp(QObject):
         self._scroll_target_rect: Optional[QRect] = None
         self._is_auto_scroll = True
         self._ticks_without_movement = 0
+
+        # Screen Recording
+        self.record_session: Optional[ScreenRecordingSession] = None
+        self.record_hud: Optional[RecordHUD] = None
+        self.record_outline: Optional[RecordRegionOutline] = None
 
     def get_or_create_main_window(self) -> OmniShotMainWindow:
         if self.main_window is None:
@@ -103,7 +114,7 @@ class OmniShotApp(QObject):
         else:
             self._do_launch_interactive(is_scroll_mode=False)
 
-    def _do_launch_interactive(self, is_scroll_mode: bool = False):
+    def _do_launch_interactive(self, is_scroll_mode: bool = False, is_record_mode: bool = False):
         active_screen = self._get_active_screen()
 
         # Clean up any existing coordinator or overlay
@@ -118,11 +129,13 @@ class OmniShotApp(QObject):
             capture_backend=self.capture_backend,
             active_screen=active_screen,
             is_scroll_mode=is_scroll_mode,
+            is_record_mode=is_record_mode,
             parent=self
         )
         self._active_overlay = self._active_coordinator.primary_overlay
         self._active_coordinator.snapshotConfirmed.connect(self._on_snapshot_confirmed)
         self._active_coordinator.scrollCaptureConfirmed.connect(self._on_scroll_confirmed)
+        self._active_coordinator.recordConfirmed.connect(self._on_record_confirmed)
         self._active_coordinator.fullscreenConfirmed.connect(lambda: self.trigger_capture("fullscreen"))
         self._active_coordinator.windowConfirmed.connect(lambda: self.trigger_capture("window"))
         self._active_coordinator.overlayCancelled.connect(self._on_overlay_cancelled)
@@ -223,6 +236,168 @@ class OmniShotApp(QObject):
         self._is_auto_scroll = is_auto
         # Wait 300ms for overlay to close and target window focus to be restored
         QTimer.singleShot(300, lambda: self._start_scrolling_session(rect, is_auto))
+
+    def _on_record_confirmed(self, rect: QRect, mode: str, desktop_audio: bool, mic: bool, cursor: bool):
+        # Coordinates emitted by coordinator are already global desktop coordinates.
+        if not self._active_coordinator and self._active_overlay:
+            rect = rect.translated(self._active_overlay.geometry().topLeft())
+        self._active_coordinator = None
+        self._active_overlay = None
+
+        # Wait 200ms for overlay to close cleanly before recording starts
+        QTimer.singleShot(200, lambda: self.start_screen_recording(rect, mode, desktop_audio, mic, cursor))
+
+    def trigger_record(
+        self,
+        mode: str = "region",
+        include_desktop_audio: bool = True,
+        include_mic: bool = False,
+        include_cursor: bool = True
+    ):
+        """Triggers screen recording or toggles active recording (Start/Stop)."""
+        # If recording is already in progress, stop it immediately (Spectacle toggle behavior)
+        if self.record_session or is_recording_in_progress():
+            print("[OmniShot] Global record shortcut toggle: stopping active recording.")
+            if self.record_session:
+                self.stop_screen_recording()
+            else:
+                request_stop_active_recording()
+            return
+
+        if self.main_window and self.main_window.isVisible():
+            self.main_window.hide()
+
+        if mode in ("region", "r"):
+            self._do_launch_interactive(is_scroll_mode=False, is_record_mode=True)
+        elif mode in ("screen", "fullscreen", "s"):
+            s = self._get_active_screen()
+            rect = s.geometry() if s else QRect(0, 0, 1920, 1080)
+            self.start_screen_recording(rect, mode="screen", include_desktop_audio=include_desktop_audio, include_mic=include_mic, include_cursor=include_cursor)
+        elif mode in ("window", "w"):
+            geo = None
+            try:
+                geo = self.capture_backend.get_active_window_geometry()
+            except Exception:
+                pass
+            if not geo or geo.width() <= 10:
+                s = self._get_active_screen()
+                geo = s.geometry() if s else QRect(0, 0, 1920, 1080)
+            self.start_screen_recording(geo, mode="window", include_desktop_audio=include_desktop_audio, include_mic=include_mic, include_cursor=include_cursor)
+
+    def start_screen_recording(
+        self,
+        rect: QRect,
+        mode: str = "region",
+        include_desktop_audio: bool = True,
+        include_mic: bool = False,
+        include_cursor: bool = True
+    ):
+        if self.record_session:
+            print("[OmniShot] Warning: Screen recording already in progress.")
+            return
+
+        # Ensure valid non-empty rectangle
+        if rect.isEmpty() or rect.width() <= 10 or rect.height() <= 10:
+            s = self._get_active_screen()
+            rect = s.geometry() if s else QRect(0, 0, 1920, 1080)
+
+        # 1. Initialize recording session
+        self.record_session = ScreenRecordingSession(
+            rect=rect,
+            mode=mode,
+            include_desktop_audio=include_desktop_audio,
+            include_mic=include_mic,
+            include_cursor=include_cursor,
+            config=self.config,
+            parent=self
+        )
+        self.record_session.timeUpdated.connect(self._on_record_time_updated)
+        self.record_session.recordingFinished.connect(self._on_record_finished)
+        self.record_session.recordingFailed.connect(self._on_record_failed)
+
+        if not self.record_session.start():
+            self.record_session = None
+            return
+
+        # 2. Show red outline if recording a sub-region
+        screens = QGuiApplication.screens()
+        is_exact_screen = any(s.geometry() == rect for s in screens)
+        if mode == "region" and not is_exact_screen:
+            self.record_outline = RecordRegionOutline(rect)
+            self.record_outline.show()
+
+        # 3. Show floating RecordHUD
+        self.record_hud = RecordHUD()
+        self.record_hud.pauseToggled.connect(self.pause_screen_recording)
+        self.record_hud.finishRequested.connect(self.stop_screen_recording)
+        self.record_hud.discardRequested.connect(self.cancel_screen_recording)
+
+        # Smart placement: outside region or near top center
+        self.record_hud.adjustSize()
+        hw = self.record_hud.width()
+        hh = self.record_hud.height()
+        target_screen = QGuiApplication.screenAt(rect.center()) or QGuiApplication.primaryScreen()
+        screen_geo = target_screen.geometry()
+
+        hx = rect.center().x() - hw // 2
+        hx = max(screen_geo.left() + 20, min(screen_geo.right() - hw - 20, hx))
+        hy = rect.bottom() + 15
+        if hy + hh > screen_geo.bottom() - 20:
+            hy = max(screen_geo.top() + 20, rect.top() - hh - 15)
+
+        self.record_hud.move(hx, hy)
+        self.record_hud.show()
+
+    def pause_screen_recording(self, is_paused: bool):
+        if self.record_session:
+            if is_paused:
+                self.record_session.pause()
+            else:
+                self.record_session.resume()
+
+    def stop_screen_recording(self):
+        if not self.record_session:
+            return
+        if self.record_hud:
+            self.record_hud.close()
+            self.record_hud = None
+        if self.record_outline:
+            self.record_outline.close()
+            self.record_outline = None
+
+        session = self.record_session
+        self.record_session = None
+        session.stop()
+
+    def cancel_screen_recording(self):
+        if not self.record_session:
+            return
+        if self.record_hud:
+            self.record_hud.close()
+            self.record_hud = None
+        if self.record_outline:
+            self.record_outline.close()
+            self.record_outline = None
+
+        session = self.record_session
+        self.record_session = None
+        session.cancel()
+
+    def _on_record_time_updated(self, seconds: int):
+        if self.record_hud:
+            self.record_hud.update_time(seconds)
+
+    def _on_record_finished(self, output_path: str):
+        print(f"[OmniShot] Finished screen recording -> {output_path}")
+
+    def _on_record_failed(self, error: str):
+        print(f"[OmniShot] Recording error: {error}")
+        if self.record_hud:
+            self.record_hud.close()
+            self.record_hud = None
+        if self.record_outline:
+            self.record_outline.close()
+            self.record_outline = None
 
     def _start_scrolling_session(self, rect: QRect, is_auto: bool):
         print(f"[OmniShot] Starting scrolling capture session ({'Auto' if is_auto else 'Manual'}) for region {rect}")

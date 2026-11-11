@@ -30,6 +30,7 @@ class SelectionActionStrip(QFrame):
     acceptClicked = Signal()
     autoScrollClicked = Signal()
     manualScrollClicked = Signal()
+    recordClicked = Signal()
     discardClicked = Signal()
 
     def __init__(self, parent=None):
@@ -74,6 +75,15 @@ class SelectionActionStrip(QFrame):
             QPushButton#btnAutoScroll:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2ecc71, stop:1 #27ae60);
             }
+            QPushButton#btnRecord {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e74c3c, stop:1 #c0392b);
+                border: 1.5px solid #ff7675;
+                color: #ffffff;
+                font-weight: bold;
+            }
+            QPushButton#btnRecord:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ff7675, stop:1 #e74c3c);
+            }
             QPushButton#btnDiscard {
                 background-color: rgba(231, 76, 60, 0.15);
                 color: #ff7675;
@@ -106,6 +116,12 @@ class SelectionActionStrip(QFrame):
         self.btn_manual_scroll.setFixedHeight(30)
         self.btn_manual_scroll.clicked.connect(self.manualScrollClicked.emit)
 
+        self.btn_record = QPushButton("Record (R)", self)
+        self.btn_record.setObjectName("btnRecord")
+        self.btn_record.setIcon(QIcon.fromTheme("media-record"))
+        self.btn_record.setFixedHeight(30)
+        self.btn_record.clicked.connect(self.recordClicked.emit)
+
         self.btn_discard = QPushButton("Discard", self)
         self.btn_discard.setObjectName("btnDiscard")
         self.btn_discard.setIcon(QIcon.fromTheme("edit-delete"))
@@ -115,11 +131,12 @@ class SelectionActionStrip(QFrame):
         layout.addWidget(self.btn_accept)
         layout.addWidget(self.btn_auto_scroll)
         layout.addWidget(self.btn_manual_scroll)
+        layout.addWidget(self.btn_record)
         layout.addWidget(self.btn_discard)
 
 
 class FloatingLaunchPill(QFrame):
-    """The signature Plasma 6 Spectacle bottom floating pill with prominent green Scrolling Capture."""
+    """The signature Plasma 6 Spectacle bottom floating pill with prominent green Scrolling Capture and Screen Recording."""
     scrollCaptureTriggered = Signal()
     regionModeSelected = Signal()
     windowCaptureTriggered = Signal()
@@ -128,6 +145,8 @@ class FloatingLaunchPill(QFrame):
     optionsChanged = Signal(dict)
     settingsTriggered = Signal()
     cancelTriggered = Signal()
+    recordTriggered = Signal(str, bool, bool, bool) # (mode, audio_desktop, audio_mic, include_cursor)
+    modeChanged = Signal(str) # "capture" vs "record"
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -135,6 +154,8 @@ class FloatingLaunchPill(QFrame):
         self.current_delay_ms = 0
         self.include_cursor = False
         self.copy_to_clipboard_direct = False
+        self.current_mode = "capture"
+        self.record_target_mode = "region"
 
         self.setStyleSheet("""
             QFrame#bottomPill {
@@ -157,6 +178,17 @@ class FloatingLaunchPill(QFrame):
                 border: 1px solid #3daee9;
                 color: #ffffff;
             }
+            QPushButton#btnModeCapture:checked, QPushButton#btnModeRecord:checked {
+                background-color: #1d6fa5;
+                border: 1px solid #3daee9;
+                color: #ffffff;
+                font-weight: bold;
+            }
+            QPushButton:checked {
+                background-color: rgba(61, 174, 233, 0.35);
+                border: 1.5px solid #3daee9;
+                color: #ffffff;
+            }
             QPushButton#btnScroll {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #27ae60, stop:1 #1e824c);
                 border: 1.5px solid #2ecc71;
@@ -169,6 +201,18 @@ class FloatingLaunchPill(QFrame):
             QPushButton#btnScroll:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2ecc71, stop:1 #27ae60);
                 border: 1.5px solid #58d68d;
+            }
+            QPushButton#btnDoRecord {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e74c3c, stop:1 #c0392b);
+                border: 1.5px solid #ff7675;
+                color: #ffffff;
+                font-weight: bold;
+                border-radius: 17px;
+                padding: 0 18px;
+                font-size: 13px;
+            }
+            QPushButton#btnDoRecord:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ff7675, stop:1 #e74c3c);
             }
             QPushButton#btnCancel {
                 background-color: rgba(231, 76, 60, 0.12);
@@ -210,7 +254,31 @@ class FloatingLaunchPill(QFrame):
         layout.setContentsMargins(8, 5, 8, 5)
         layout.setSpacing(8)
 
-        # 1. 📜 Scrolling Capture (Highlighted Green Button)
+        # 0. Segmented Mode Switcher: 📷 Capture vs 🎥 Record
+        self.btn_mode_capture = QPushButton("Capture", self)
+        self.btn_mode_capture.setObjectName("btnModeCapture")
+        self.btn_mode_capture.setIcon(QIcon.fromTheme("camera-photo"))
+        self.btn_mode_capture.setCheckable(True)
+        self.btn_mode_capture.setChecked(True)
+        self.btn_mode_capture.setFixedHeight(34)
+        self.btn_mode_capture.clicked.connect(lambda: self.set_mode("capture"))
+        layout.addWidget(self.btn_mode_capture)
+
+        self.btn_mode_record = QPushButton("Record", self)
+        self.btn_mode_record.setObjectName("btnModeRecord")
+        self.btn_mode_record.setIcon(QIcon.fromTheme("media-record"))
+        self.btn_mode_record.setCheckable(True)
+        self.btn_mode_record.setFixedHeight(34)
+        self.btn_mode_record.clicked.connect(lambda: self.set_mode("record"))
+        layout.addWidget(self.btn_mode_record)
+
+        self.sep_mode = QFrame(self)
+        self.sep_mode.setObjectName("vSep")
+        self.sep_mode.setFrameShape(QFrame.Shape.VLine)
+        layout.addWidget(self.sep_mode)
+
+        # --- CAPTURE CONTROLS ---
+        # 1. 📜 Scrolling Capture
         self.btn_scroll = QPushButton("Scrolling Capture", self)
         self.btn_scroll.setObjectName("btnScroll")
         self.btn_scroll.setIcon(get_tool_icon("scrolling_capture"))
@@ -248,10 +316,10 @@ class FloatingLaunchPill(QFrame):
         layout.addWidget(self.btn_fullscreen)
 
         # Separator
-        sep = QFrame(self)
-        sep.setObjectName("vSep")
-        sep.setFrameShape(QFrame.Shape.VLine)
-        layout.addWidget(sep)
+        self.sep_capture = QFrame(self)
+        self.sep_capture.setObjectName("vSep")
+        self.sep_capture.setFrameShape(QFrame.Shape.VLine)
+        layout.addWidget(self.sep_capture)
 
         # 5. ⏱️ Delay Dropdown
         self.btn_delay = QToolButton(self)
@@ -273,6 +341,78 @@ class FloatingLaunchPill(QFrame):
         self._setup_options_menu()
         layout.addWidget(self.btn_options)
 
+        self._capture_widgets = [
+            self.btn_scroll, self.btn_region, self.btn_window,
+            self.btn_fullscreen, self.sep_capture, self.btn_delay, self.btn_options
+        ]
+
+        # --- RECORD CONTROLS (Initially Hidden) ---
+        self.btn_rec_region = QPushButton("Region", self)
+        self.btn_rec_region.setCheckable(True)
+        self.btn_rec_region.setChecked(True)
+        self.btn_rec_region.setFixedHeight(34)
+        self.btn_rec_region.setIcon(get_tool_icon("region"))
+        self.btn_rec_region.clicked.connect(lambda: self._set_record_mode("region"))
+        layout.addWidget(self.btn_rec_region)
+
+        self.btn_rec_fullscreen = QPushButton("Screen", self)
+        self.btn_rec_fullscreen.setCheckable(True)
+        self.btn_rec_fullscreen.setFixedHeight(34)
+        self.btn_rec_fullscreen.setIcon(get_tool_icon("fullscreen"))
+        self.btn_rec_fullscreen.clicked.connect(lambda: self._set_record_mode("screen"))
+        layout.addWidget(self.btn_rec_fullscreen)
+
+        self.btn_rec_window = QPushButton("Window", self)
+        self.btn_rec_window.setCheckable(True)
+        self.btn_rec_window.setFixedHeight(34)
+        self.btn_rec_window.setIcon(get_tool_icon("window"))
+        self.btn_rec_window.clicked.connect(lambda: self._set_record_mode("window"))
+        layout.addWidget(self.btn_rec_window)
+
+        self.sep_rec = QFrame(self)
+        self.sep_rec.setObjectName("vSep")
+        self.sep_rec.setFrameShape(QFrame.Shape.VLine)
+        layout.addWidget(self.sep_rec)
+
+        self.btn_audio_desktop = QPushButton("Audio", self)
+        self.btn_audio_desktop.setCheckable(True)
+        self.btn_audio_desktop.setChecked(True)
+        self.btn_audio_desktop.setFixedHeight(34)
+        self.btn_audio_desktop.setIcon(QIcon.fromTheme("audio-volume-high"))
+        self.btn_audio_desktop.setToolTip("Include Desktop Audio")
+        layout.addWidget(self.btn_audio_desktop)
+
+        self.btn_audio_mic = QPushButton("Mic", self)
+        self.btn_audio_mic.setCheckable(True)
+        self.btn_audio_mic.setChecked(False)
+        self.btn_audio_mic.setFixedHeight(34)
+        self.btn_audio_mic.setIcon(QIcon.fromTheme("audio-input-microphone"))
+        self.btn_audio_mic.setToolTip("Include Microphone Audio")
+        layout.addWidget(self.btn_audio_mic)
+
+        self.btn_rec_cursor = QPushButton("Pointer", self)
+        self.btn_rec_cursor.setCheckable(True)
+        self.btn_rec_cursor.setChecked(True)
+        self.btn_rec_cursor.setFixedHeight(34)
+        self.btn_rec_cursor.setIcon(QIcon.fromTheme("input-mouse"))
+        self.btn_rec_cursor.setToolTip("Show Mouse Pointer in recording")
+        layout.addWidget(self.btn_rec_cursor)
+
+        self.btn_do_record = QPushButton("⏺ Record", self)
+        self.btn_do_record.setObjectName("btnDoRecord")
+        self.btn_do_record.setFixedHeight(34)
+        self.btn_do_record.setToolTip("Start screen recording (Enter)")
+        self.btn_do_record.clicked.connect(self._on_do_record_clicked)
+        layout.addWidget(self.btn_do_record)
+
+        self._record_widgets = [
+            self.btn_rec_region, self.btn_rec_fullscreen, self.btn_rec_window,
+            self.sep_rec, self.btn_audio_desktop, self.btn_audio_mic,
+            self.btn_rec_cursor, self.btn_do_record
+        ]
+        for w in self._record_widgets:
+            w.hide()
+
         # 7. ✕ Cancel
         self.btn_cancel = QPushButton(" Cancel", self)
         self.btn_cancel.setObjectName("btnCancel")
@@ -282,6 +422,35 @@ class FloatingLaunchPill(QFrame):
         self.btn_cancel.setToolTip("Close OmniShot (Esc)")
         self.btn_cancel.clicked.connect(self.cancelTriggered.emit)
         layout.addWidget(self.btn_cancel)
+
+    def set_mode(self, mode: str):
+        self.current_mode = mode
+        is_rec = (mode == "record")
+        self.btn_mode_capture.setChecked(not is_rec)
+        self.btn_mode_record.setChecked(is_rec)
+
+        for w in self._capture_widgets:
+            w.setVisible(not is_rec)
+        for w in self._record_widgets:
+            w.setVisible(is_rec)
+
+        self.adjustSize()
+        self.modeChanged.emit(mode)
+
+    def _set_record_mode(self, mode: str):
+        self.record_target_mode = mode
+        self.btn_rec_region.setChecked(mode == "region")
+        self.btn_rec_fullscreen.setChecked(mode == "screen")
+        self.btn_rec_window.setChecked(mode == "window")
+
+    def _on_do_record_clicked(self):
+        self.recordTriggered.emit(
+            self.record_target_mode,
+            self.btn_audio_desktop.isChecked(),
+            self.btn_audio_mic.isChecked(),
+            self.btn_rec_cursor.isChecked()
+        )
+
 
     def _setup_delay_menu(self):
         menu = QMenu(self)
@@ -347,6 +516,7 @@ class SpectacleLaunchOverlay(QWidget):
     """
     snapshotConfirmed = Signal(QRect, object)
     scrollCaptureConfirmed = Signal(QRect, bool) # (rect, is_auto)
+    recordConfirmed = Signal(QRect, str, bool, bool, bool) # (rect, mode, audio_desktop, audio_mic, include_cursor)
     fullscreenConfirmed = Signal()
     windowConfirmed = Signal()
     overlayCancelled = Signal()
@@ -401,6 +571,8 @@ class SpectacleLaunchOverlay(QWidget):
         self.bottom_pill.regionModeSelected.connect(self._on_pill_region_selected)
         self.bottom_pill.windowCaptureTriggered.connect(self._on_pill_window_triggered)
         self.bottom_pill.fullscreenCaptureTriggered.connect(self._on_pill_fullscreen_triggered)
+        self.bottom_pill.recordTriggered.connect(self._on_pill_record_triggered)
+        self.bottom_pill.modeChanged.connect(self._on_mode_changed)
         self.bottom_pill.settingsTriggered.connect(self._open_settings)
         self.bottom_pill.cancelTriggered.connect(self._on_cancel_requested)
 
@@ -417,6 +589,7 @@ class SpectacleLaunchOverlay(QWidget):
         self.selection_strip.acceptClicked.connect(self._confirm_snapshot)
         self.selection_strip.autoScrollClicked.connect(lambda: self._confirm_scroll(True))
         self.selection_strip.manualScrollClicked.connect(lambda: self._confirm_scroll(False))
+        self.selection_strip.recordClicked.connect(self._confirm_record_selection)
         self.selection_strip.discardClicked.connect(self._clear_selection)
 
         # Set geometry to match target screen or primary screen
@@ -445,12 +618,19 @@ class SpectacleLaunchOverlay(QWidget):
         if key == Qt.Key.Key_Escape:
             self._on_cancel_requested()
         elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
-            if self._selected_rect and self._selected_rect.width() > 10 and self._selected_rect.height() > 10:
+            if self.bottom_pill.current_mode == "record":
+                self._confirm_record_selection()
+            elif self._selected_rect and self._selected_rect.width() > 10 and self._selected_rect.height() > 10:
                 self._confirm_snapshot()
             elif self.coordinator and self.coordinator.has_any_selection():
                 self.coordinator.confirm_active_selection()
             else:
                 self._on_pill_fullscreen_triggered()
+        elif key == Qt.Key.Key_R:
+            if self._selected_rect and self._selected_rect.width() > 10 and self._selected_rect.height() > 10:
+                self._confirm_record_selection()
+            else:
+                self.bottom_pill.set_mode("record")
         elif key in (Qt.Key.Key_A, Qt.Key.Key_S):
             if self._selected_rect and self._selected_rect.width() > 10 and self._selected_rect.height() > 10:
                 self._confirm_scroll(True)
@@ -762,6 +942,52 @@ class SpectacleLaunchOverlay(QWidget):
             self.close()
             self.scrollCaptureConfirmed.emit(rect, is_auto)
 
+    def _confirm_record_selection(self):
+        rect = self._selected_rect
+        if not rect or rect.width() <= 10 or rect.height() <= 10:
+            s = self._target_screen or self.screen() or QGuiApplication.primaryScreen()
+            rect = s.geometry() if s else QRect(0, 0, 1920, 1080)
+            mode = "screen"
+        else:
+            mode = "region"
+
+        audio_desktop = self.bottom_pill.btn_audio_desktop.isChecked() if hasattr(self.bottom_pill, "btn_audio_desktop") else True
+        mic = self.bottom_pill.btn_audio_mic.isChecked() if hasattr(self.bottom_pill, "btn_audio_mic") else False
+        cursor = self.bottom_pill.btn_rec_cursor.isChecked() if hasattr(self.bottom_pill, "btn_rec_cursor") else True
+
+        if self.coordinator:
+            self.coordinator.confirm_record(self, rect, mode, audio_desktop, mic, cursor)
+        else:
+            self.close()
+            self.recordConfirmed.emit(rect, mode, audio_desktop, mic, cursor)
+
+    def _on_pill_record_triggered(self, mode: str, audio_desktop: bool, mic: bool, cursor: bool):
+        if mode in ("fullscreen", "screen"):
+            s = self._target_screen or self.screen() or QGuiApplication.primaryScreen()
+            rect = s.geometry() if s else QRect(0, 0, 1920, 1080)
+            if self.coordinator:
+                self.coordinator.confirm_record(self, rect, "screen", audio_desktop, mic, cursor)
+            else:
+                self.close()
+                self.recordConfirmed.emit(rect, "screen", audio_desktop, mic, cursor)
+        elif mode == "window":
+            if self.coordinator:
+                self.coordinator.confirm_record(self, QRect(0, 0, 0, 0), "window", audio_desktop, mic, cursor)
+            else:
+                self.close()
+                self.recordConfirmed.emit(QRect(0, 0, 0, 0), "window", audio_desktop, mic, cursor)
+        else: # region
+            self._confirm_record_selection()
+
+    def _on_mode_changed(self, mode: str):
+        if mode == "record":
+            self.top_pill.setText("OmniShot - Screen Recording Mode")
+            self._prompt_text = "Drag a region or click Record to begin screen recording"
+        else:
+            self.top_pill.setText("OmniShot - Ready")
+            self._prompt_text = "Click and drag to draw a capture region,\nor select a mode below"
+        self.update()
+
     def paintEvent(self, event: QPaintEvent):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -922,17 +1148,19 @@ class MultiScreenOverlayCoordinator(QObject):
     """
     snapshotConfirmed = Signal(QRect, object) # (global_rect, QImage)
     scrollCaptureConfirmed = Signal(QRect, bool) # (global_rect, is_auto)
+    recordConfirmed = Signal(QRect, str, bool, bool, bool) # (global_rect, mode, audio_desktop, mic, cursor)
     fullscreenConfirmed = Signal()
     windowConfirmed = Signal()
     overlayCancelled = Signal()
 
-    def __init__(self, capture_backend, active_screen=None, is_scroll_mode: bool = False, parent=None):
+    def __init__(self, capture_backend, active_screen=None, is_scroll_mode: bool = False, is_record_mode: bool = False, parent=None):
         super().__init__(parent)
         self.capture_backend = capture_backend
         self.screens = QGuiApplication.screens()
         self.active_screen = active_screen or QGuiApplication.primaryScreen()
         self.overlays: List[SpectacleLaunchOverlay] = []
         self._is_scroll_mode = is_scroll_mode
+        self._is_record_mode = is_record_mode
         self._active_initiating_overlay: Optional[SpectacleLaunchOverlay] = None
         self._global_selection_rect: Optional[QRect] = None
 
@@ -958,6 +1186,8 @@ class MultiScreenOverlayCoordinator(QObject):
             )
             if self._is_scroll_mode:
                 overlay._on_pill_scroll_triggered()
+            elif self._is_record_mode and is_primary:
+                overlay.bottom_pill.set_mode("record")
 
             self.overlays.append(overlay)
 
@@ -1092,3 +1322,14 @@ class MultiScreenOverlayCoordinator(QObject):
     def confirm_window(self):
         self.close_all()
         self.windowConfirmed.emit()
+
+    def confirm_record(self, initiating_overlay: SpectacleLaunchOverlay, local_rect: QRect, mode: str, audio_desktop: bool, mic: bool, cursor: bool):
+        target_screen = initiating_overlay._target_screen
+        offset = target_screen.geometry().topLeft() if target_screen else QPoint(0, 0)
+        if self._global_selection_rect and self._global_selection_rect.width() > 10:
+            global_rect = self._global_selection_rect
+        else:
+            global_rect = local_rect.translated(offset)
+
+        self.close_all()
+        self.recordConfirmed.emit(global_rect, mode, audio_desktop, mic, cursor)

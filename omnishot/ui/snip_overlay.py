@@ -15,6 +15,7 @@ class FloatingSnipToolbar(QFrame):
     snapshotClicked = Signal()
     autoScrollClicked = Signal()
     manualScrollClicked = Signal()
+    recordClicked = Signal()
     cancelClicked = Signal()
 
     def __init__(self, parent=None):
@@ -49,6 +50,14 @@ class FloatingSnipToolbar(QFrame):
                 border: 1px solid #2ecc71;
                 color: #ffffff;
             }
+            QPushButton#recordAction {
+                background-color: #c0392b;
+                border: 1px solid #e74c3c;
+                color: #ffffff;
+            }
+            QPushButton#recordAction:hover {
+                background-color: #e74c3c;
+            }
             QPushButton#cancelAction {
                 background-color: #7f8c8d;
                 border: none;
@@ -70,6 +79,10 @@ class FloatingSnipToolbar(QFrame):
         self.btn_manual_scroll = QPushButton("🖱️ Manual Scroll (M)", self)
         self.btn_manual_scroll.clicked.connect(self.manualScrollClicked.emit)
 
+        self.btn_record = QPushButton("⏺ Record (R)", self)
+        self.btn_record.setObjectName("recordAction")
+        self.btn_record.clicked.connect(self.recordClicked.emit)
+
         self.btn_cancel = QPushButton("✕ Cancel (Esc)", self)
         self.btn_cancel.setObjectName("cancelAction")
         self.btn_cancel.clicked.connect(self.cancelClicked.emit)
@@ -77,12 +90,14 @@ class FloatingSnipToolbar(QFrame):
         layout.addWidget(self.btn_snapshot)
         layout.addWidget(self.btn_auto_scroll)
         layout.addWidget(self.btn_manual_scroll)
+        layout.addWidget(self.btn_record)
         layout.addWidget(self.btn_cancel)
 
 
 class SnipSelectionOverlay(QWidget):
     snapshotConfirmed = Signal(QRect)
     scrollCaptureConfirmed = Signal(QRect, bool) # (rect, is_auto)
+    recordConfirmed = Signal(QRect)
     overlayCancelled = Signal()
 
     def __init__(self, background_screen: QImage, parent=None):
@@ -108,6 +123,7 @@ class SnipSelectionOverlay(QWidget):
         self._toolbar.snapshotClicked.connect(self._on_snapshot_clicked)
         self._toolbar.autoScrollClicked.connect(lambda: self._on_scroll_clicked(True))
         self._toolbar.manualScrollClicked.connect(lambda: self._on_scroll_clicked(False))
+        self._toolbar.recordClicked.connect(self._on_record_clicked)
         self._toolbar.cancelClicked.connect(self._on_cancel_clicked)
 
         # Show fullscreen
@@ -127,8 +143,17 @@ class SnipSelectionOverlay(QWidget):
         elif key == Qt.Key.Key_M:
             if self._selected_rect and self._selected_rect.width() > 10 and self._selected_rect.height() > 10:
                 self._on_scroll_clicked(False)
+        elif key == Qt.Key.Key_R:
+            if self._selected_rect and self._selected_rect.width() > 10 and self._selected_rect.height() > 10:
+                self._on_record_clicked()
         else:
             super().keyPressEvent(event)
+
+    def _on_record_clicked(self):
+        if self._selected_rect and self._selected_rect.width() > 10 and self._selected_rect.height() > 10:
+            self.close()
+            self.recordConfirmed.emit(self._selected_rect)
+
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:

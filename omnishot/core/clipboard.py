@@ -31,6 +31,36 @@ def ensure_klipper_image_support():
             pass
 
 
+def copy_text_to_clipboard(text: str) -> bool:
+    """
+    Copies plain text (e.g. video file path or URL) to the system clipboard.
+    Delegates to wl-copy on Wayland and QClipboard.
+    """
+    if not text:
+        return False
+    try:
+        clipboard = QGuiApplication.clipboard()
+        if clipboard:
+            clipboard.setText(text)
+        wl_copy = shutil.which("wl-copy")
+        if wl_copy:
+            try:
+                p = subprocess.Popen(
+                    [wl_copy, "--type", "text/plain"],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True
+                )
+                p.communicate(input=text.encode("utf-8"), timeout=0.5)
+            except Exception:
+                pass
+        return True
+    except Exception as e:
+        print(f"[OmniShot] Warning: Failed to copy text to clipboard: {e}")
+        return False
+
+
 def copy_image_to_clipboard(image: QImage) -> bool:
     """
     Copies a QImage to the system clipboard with multi-format MIME data:

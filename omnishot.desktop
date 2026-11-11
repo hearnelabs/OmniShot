@@ -8,7 +8,7 @@ Type=Application
 StartupNotify=false
 Categories=Utility;Graphics;Photography;
 Keywords=snapshot;capture;print;screenshot;snipping;scroll;scrolling;stitch;
-Actions=OpenImageEditor;ScrollingCapture;ManualScrollingCapture;RectangularRegionScreenShot;ActiveWindowScreenShot;FullScreenScreenShot;
+Actions=OpenImageEditor;ScrollingCapture;ManualScrollingCapture;RectangularRegionScreenShot;ActiveWindowScreenShot;FullScreenScreenShot;RecordRegion;RecordScreen;RecordWindow;
 X-KDE-Shortcuts=Meta+Shift+S
 X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
 X-KDE-Wayland-Interfaces=org_kde_plasma_window_management,zkde_screencast_unstable_v1
@@ -23,7 +23,7 @@ X-KDE-Shortcuts=Meta+Shift+E
 Name=Scrolling Capture (Auto)
 Exec=omnishot -S
 Icon=omnishot
-X-KDE-Shortcuts=Meta+Shift+R
+X-KDE-Shortcuts=Meta+Shift+C
 
 [Desktop Action ManualScrollingCapture]
 Name=Scrolling Capture (Manual)
@@ -34,7 +34,7 @@ Icon=omnishot
 Name=Capture Rectangular Region
 Exec=omnishot -r
 Icon=omnishot
-X-KDE-Shortcuts=Meta+Shift+S
+X-KDE-Shortcuts=Meta+Shift+Print
 
 [Desktop Action ActiveWindowScreenShot]
 Name=Capture Active Window
@@ -47,3 +47,21 @@ Name=Capture Entire Desktop
 Exec=omnishot -f
 Icon=omnishot
 X-KDE-Shortcuts=Shift+Print
+
+[Desktop Action RecordRegion]
+Name=Start/Stop Region Recording
+Exec=omnishot -R region
+Icon=omnishot
+X-KDE-Shortcuts=Meta+Shift+R,Meta+R
+
+[Desktop Action RecordScreen]
+Name=Start/Stop Screen Recording
+Exec=omnishot -R screen
+Icon=omnishot
+X-KDE-Shortcuts=Meta+Alt+R
+
+[Desktop Action RecordWindow]
+Name=Start/Stop Window Recording
+Exec=omnishot -R window
+Icon=omnishot
+X-KDE-Shortcuts=Meta+Ctrl+R

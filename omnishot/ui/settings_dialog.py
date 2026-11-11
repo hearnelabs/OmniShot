@@ -105,11 +105,13 @@ class OmniShotSettingsDialog(QDialog):
         # Add Tabs
         self.tab_save = self._create_save_location_tab()
         self.tab_shortcuts = self._create_shortcuts_tab()
+        self.tab_recording = self._create_recording_tab()
         self.tab_scrolling = self._create_scrolling_tab()
         self.tab_about = self._create_about_tab()
 
         self.tabs.addTab(self.tab_save, "📁 Save Location && Files")
         self.tabs.addTab(self.tab_shortcuts, "⌨️ Global Hotkeys (KDE)")
+        self.tabs.addTab(self.tab_recording, "🎥 Screen Recording")
         self.tabs.addTab(self.tab_scrolling, "📜 Scrolling Engine")
         self.tabs.addTab(self.tab_about, "ℹ️ About OmniShot")
 
@@ -289,6 +291,15 @@ class OmniShotSettingsDialog(QDialog):
         self.key_editor = QKeySequenceEdit(self)
         form_keys.addRow("Open Image Editor:", self.key_editor)
 
+        self.key_record_region = QKeySequenceEdit(self)
+        form_keys.addRow("Record Rectangular Region (Start/Stop):", self.key_record_region)
+
+        self.key_record_screen = QKeySequenceEdit(self)
+        form_keys.addRow("Record Entire Screen (Start/Stop):", self.key_record_screen)
+
+        self.key_record_window = QKeySequenceEdit(self)
+        form_keys.addRow("Record Active Window (Start/Stop):", self.key_record_window)
+
         layout.addWidget(grp_keys)
 
         # Shortcut Helper Buttons
@@ -307,6 +318,102 @@ class OmniShotSettingsDialog(QDialog):
 
         btn_box.addStretch()
         layout.addLayout(btn_box)
+
+        layout.addStretch()
+        return tab
+
+    def _create_recording_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(14)
+
+        # Group 1: Recordings Directory
+        grp_dir = QGroupBox("Recordings Save Directory", tab)
+        dir_layout = QVBoxLayout(grp_dir)
+        dir_layout.setSpacing(8)
+
+        lbl_dir_info = QLabel("Destination folder where captured MP4 and WebM videos are saved:")
+        lbl_dir_info.setStyleSheet("color: #a0a8b4; font-size: 12px;")
+        dir_layout.addWidget(lbl_dir_info)
+
+        row_dir = QHBoxLayout()
+        row_dir.setSpacing(8)
+        self.txt_record_dir = QLineEdit(self)
+        self.txt_record_dir.setPlaceholderText("/home/user/Videos/Recordings")
+        row_dir.addWidget(self.txt_record_dir, 1)
+
+        btn_browse = QPushButton("Browse...", self)
+        btn_browse.setStyleSheet("padding: 6px 14px; background-color: #262b35; border: 1px solid #3e444c; border-radius: 5px;")
+        btn_browse.clicked.connect(self._browse_record_directory)
+        row_dir.addWidget(btn_browse)
+
+        dir_layout.addLayout(row_dir)
+        layout.addWidget(grp_dir)
+
+        # Group 2: Video Format & Frame Rate
+        grp_video = QGroupBox("Encoding Format && Frame Rate", tab)
+        video_layout = QVBoxLayout(grp_video)
+        video_layout.setSpacing(10)
+
+        form_video = QFormLayout()
+        form_video.setSpacing(8)
+
+        self.cbo_record_format = QComboBox(self)
+        self.cbo_record_format.addItems([
+            "MP4 (H.264 / AAC - High Compatibility)",
+            "WebM (VP9 / Opus - Modern Open Standard)"
+        ])
+        form_video.addRow("Video Container & Codec:", self.cbo_record_format)
+
+        self.cbo_record_fps = QComboBox(self)
+        self.cbo_record_fps.addItems([
+            "30 FPS (Standard - Balanced CPU & Storage)",
+            "60 FPS (Ultra Smooth - High Motion Fidelity)"
+        ])
+        form_video.addRow("Recording Frame Rate:", self.cbo_record_fps)
+
+        video_layout.addLayout(form_video)
+        layout.addWidget(grp_video)
+
+        # Group 3: Default Audio & Cursor Capture
+        grp_audio = QGroupBox("Audio && Pointer Options", tab)
+        audio_layout = QVBoxLayout(grp_audio)
+        audio_layout.setSpacing(8)
+
+        self.chk_record_desktop_audio = QCheckBox("Record Desktop / System Audio by default (PipeWire/Pulse sink monitor)")
+        audio_layout.addWidget(self.chk_record_desktop_audio)
+
+        self.chk_record_mic = QCheckBox("Record Microphone by default (PipeWire/Pulse source)")
+        audio_layout.addWidget(self.chk_record_mic)
+
+        self.chk_record_cursor = QCheckBox("Include mouse cursor in video recordings")
+        audio_layout.addWidget(self.chk_record_cursor)
+
+        layout.addWidget(grp_audio)
+
+        # Tip Banner
+        banner = QFrame(tab)
+        banner.setStyleSheet("""
+            QFrame {
+                background-color: rgba(46, 204, 113, 0.12);
+                border: 1px solid rgba(46, 204, 113, 0.35);
+                border-radius: 6px;
+                padding: 10px;
+            }
+        """)
+        b_layout = QVBoxLayout(banner)
+        b_layout.setContentsMargins(8, 6, 8, 6)
+        b_title = QLabel("💡 Spectacle-Style Start / Stop Toggle")
+        b_title.setStyleSheet("font-weight: bold; color: #2ecc71; font-size: 13px;")
+        b_layout.addWidget(b_title)
+        b_desc = QLabel(
+            "Pressing Meta+Shift+R while a recording is in progress automatically finalizes and saves "
+            "the video immediately. You can also use the floating capsule HUD to pause, stop, or discard."
+        )
+        b_desc.setWordWrap(True)
+        b_desc.setStyleSheet("color: #d8dce2; font-size: 12px;")
+        b_layout.addWidget(b_desc)
+        layout.addWidget(banner)
 
         layout.addStretch()
         return tab
@@ -430,6 +537,19 @@ class OmniShotSettingsDialog(QDialog):
         self.key_fullscreen.setKeySequence(QKeySequence(self.config.shortcut_fullscreen))
         self.key_window.setKeySequence(QKeySequence(self.config.shortcut_window))
         self.key_editor.setKeySequence(QKeySequence(getattr(self.config, "shortcut_editor", "Meta+Shift+E")))
+        self.key_record_region.setKeySequence(QKeySequence(getattr(self.config, "shortcut_record_region", "Meta+Shift+R")))
+        self.key_record_screen.setKeySequence(QKeySequence(getattr(self.config, "shortcut_record_screen", "Meta+Alt+R")))
+        self.key_record_window.setKeySequence(QKeySequence(getattr(self.config, "shortcut_record_window", "Meta+Ctrl+R")))
+
+        # Recording
+        self.txt_record_dir.setText(self.config.record_directory)
+        rec_fmt = getattr(self.config, "record_format", "mp4").lower()
+        self.cbo_record_format.setCurrentIndex(1 if rec_fmt == "webm" else 0)
+        rec_fps = getattr(self.config, "record_fps", 30)
+        self.cbo_record_fps.setCurrentIndex(1 if rec_fps == 60 else 0)
+        self.chk_record_desktop_audio.setChecked(getattr(self.config, "record_include_desktop_audio", True))
+        self.chk_record_mic.setChecked(getattr(self.config, "record_include_mic", False))
+        self.chk_record_cursor.setChecked(getattr(self.config, "record_include_cursor", True))
 
         # Scrolling
         self.spin_scroll_step.setValue(self.config.scroll_step_pixels)
@@ -454,13 +574,22 @@ class OmniShotSettingsDialog(QDialog):
         if selected_dir:
             self.txt_save_dir.setText(selected_dir)
 
+    def _browse_record_directory(self):
+        curr = self.txt_record_dir.text().strip() or str(Path.home() / "Videos" / "Recordings")
+        selected_dir = QFileDialog.getExistingDirectory(self, "Select Recordings Save Directory", curr)
+        if selected_dir:
+            self.txt_record_dir.setText(selected_dir)
+
     def _reset_shortcuts_to_defaults(self):
         self.key_launch.setKeySequence(QKeySequence("Meta+Shift+S"))
         self.key_scrolling.setKeySequence(QKeySequence("Meta+Shift+C"))
-        self.key_region.setKeySequence(QKeySequence("Meta+Shift+R"))
+        self.key_region.setKeySequence(QKeySequence("Meta+Shift+Print"))
         self.key_fullscreen.setKeySequence(QKeySequence("Print"))
         self.key_window.setKeySequence(QKeySequence("Meta+Print"))
         self.key_editor.setKeySequence(QKeySequence("Meta+Shift+E"))
+        self.key_record_region.setKeySequence(QKeySequence("Meta+Shift+R"))
+        self.key_record_screen.setKeySequence(QKeySequence("Meta+Alt+R"))
+        self.key_record_window.setKeySequence(QKeySequence("Meta+Ctrl+R"))
         self.lbl_status.setText("Shortcuts reset to defaults.")
 
     def _apply_kde_shortcuts_now(self):
@@ -471,10 +600,13 @@ class OmniShotSettingsDialog(QDialog):
     def _sync_shortcuts_to_config(self):
         self.config.shortcut_launch = self.key_launch.keySequence().toString() or "Meta+Shift+S"
         self.config.shortcut_scrolling = self.key_scrolling.keySequence().toString() or "Meta+Shift+C"
-        self.config.shortcut_region = self.key_region.keySequence().toString() or "Meta+Shift+R"
+        self.config.shortcut_region = self.key_region.keySequence().toString() or "Meta+Shift+Print"
         self.config.shortcut_fullscreen = self.key_fullscreen.keySequence().toString() or "Print"
         self.config.shortcut_window = self.key_window.keySequence().toString() or "Meta+Print"
         self.config.shortcut_editor = self.key_editor.keySequence().toString() or "Meta+Shift+E"
+        self.config.shortcut_record_region = self.key_record_region.keySequence().toString() or "Meta+Shift+R"
+        self.config.shortcut_record_screen = self.key_record_screen.keySequence().toString() or "Meta+Alt+R"
+        self.config.shortcut_record_window = self.key_record_window.keySequence().toString() or "Meta+Ctrl+R"
 
     def _save_and_apply(self):
         # 1. Update save directory & files
@@ -505,14 +637,29 @@ class OmniShotSettingsDialog(QDialog):
         # 2. Update shortcuts
         self._sync_shortcuts_to_config()
 
-        # 3. Update scrolling parameters
+        # 3. Update recording parameters
+        rec_dir = self.txt_record_dir.text().strip()
+        if rec_dir:
+            try:
+                Path(rec_dir).mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+            self.config.record_directory = rec_dir
+
+        self.config.record_format = "webm" if self.cbo_record_format.currentIndex() == 1 else "mp4"
+        self.config.record_fps = 60 if self.cbo_record_fps.currentIndex() == 1 else 30
+        self.config.record_include_desktop_audio = self.chk_record_desktop_audio.isChecked()
+        self.config.record_include_mic = self.chk_record_mic.isChecked()
+        self.config.record_include_cursor = self.chk_record_cursor.isChecked()
+
+        # 4. Update scrolling parameters
         self.config.scroll_step_pixels = self.spin_scroll_step.value()
         self.config.scroll_delay_ms = self.spin_scroll_delay.value()
         self.config.scrollbar_margin_right = self.spin_scrollbar_margin.value()
         self.config.scroll_max_frames = self.spin_max_frames.value()
         self.config.auto_detect_end_of_scroll = self.chk_auto_detect_end.isChecked()
 
-        # 4. Save to JSON and apply to KDE
+        # 5. Save to JSON and apply to KDE
         self.config.save()
         self.config.apply_kde_shortcuts()
 

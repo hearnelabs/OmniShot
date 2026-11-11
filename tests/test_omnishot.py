@@ -753,6 +753,96 @@ class TestOmniShot(unittest.TestCase):
         
         win.close()
 
+    def test_20_screen_recording_subsystem(self):
+        """Verifies screen recording CLI arguments, config defaults, recording session, and UI HUD."""
+        from PySide6.QtCore import QRect
+        from omnishot.cli import build_parser
+        from omnishot.core.config import OmniShotConfig
+        from omnishot.core.recorder import ScreenRecordingSession, is_recording_in_progress, get_recorder_socket_path
+        from omnishot.ui.record_hud import RecordHUD, RecordRegionOutline
+        from omnishot.ui.settings_dialog import OmniShotSettingsDialog
+
+        # 1. Config defaults
+        cfg = OmniShotConfig()
+        self.assertTrue(cfg.record_directory.endswith("Videos/Recordings"))
+        self.assertEqual(cfg.record_format, "mp4")
+        self.assertEqual(cfg.record_fps, 30)
+        self.assertTrue(cfg.record_include_desktop_audio)
+        self.assertFalse(cfg.record_include_mic)
+        self.assertTrue(cfg.record_include_cursor)
+        self.assertEqual(cfg.shortcut_record_region, "Meta+Shift+R")
+        self.assertEqual(cfg.shortcut_record_screen, "Meta+Alt+R")
+        self.assertEqual(cfg.shortcut_record_window, "Meta+Ctrl+R")
+
+        # 2. CLI arguments parsing
+        parser = build_parser()
+        
+        args = parser.parse_args(["-R"])
+        self.assertEqual(args.record, "region")
+        
+        args = parser.parse_args(["-R", "screen"])
+        self.assertEqual(args.record, "screen")
+        
+        args = parser.parse_args(["--record-region"])
+        self.assertTrue(args.record_region)
+        
+        args = parser.parse_args(["--record-screen"])
+        self.assertTrue(args.record_screen)
+        
+        args = parser.parse_args(["--record-window"])
+        self.assertTrue(args.record_window)
+        
+        args = parser.parse_args(["--stop-record"])
+        self.assertTrue(args.stop_record)
+        
+        args = parser.parse_args(["--no-audio", "--record-mic", "--no-cursor"])
+        self.assertTrue(args.no_audio)
+        self.assertTrue(args.record_mic)
+        self.assertTrue(args.no_cursor)
+
+        # 3. ScreenRecordingSession structure
+        test_rect = QRect(100, 100, 640, 480)
+        session = ScreenRecordingSession(
+            rect=test_rect,
+            mode="region",
+            include_desktop_audio=True,
+            include_mic=False,
+            include_cursor=True,
+            config=cfg
+        )
+        self.assertEqual(session.rect, test_rect)
+        self.assertEqual(session.mode, "region")
+        self.assertEqual(session.fps, 30)
+        self.assertFalse(session.is_active)
+        self.assertFalse(session.is_paused)
+
+        # 4. RecordHUD & RecordRegionOutline UI elements
+        hud = RecordHUD()
+        hud.update_time(65)
+        self.assertEqual(hud.lbl_timer.text(), "01:05")
+        hud.set_paused_state(True)
+        self.assertTrue(hud.is_paused)
+        hud.set_paused_state(False)
+        self.assertFalse(hud.is_paused)
+        hud.close()
+
+        outline = RecordRegionOutline(test_rect)
+        # Outline is expanded by 2px on all sides so the border does not occlude recorded content
+        self.assertEqual(outline.geometry(), test_rect.adjusted(-2, -2, 2, 2))
+        outline.close()
+
+        # 5. Settings dialog recording tab
+        dlg = OmniShotSettingsDialog(cfg)
+        self.assertIsNotNone(dlg.tab_recording)
+        self.assertEqual(dlg.tabs.tabText(2), "🎥 Screen Recording")
+        self.assertEqual(dlg.txt_record_dir.text(), cfg.record_directory)
+        self.assertEqual(dlg.cbo_record_format.currentIndex(), 0) # MP4
+        self.assertEqual(dlg.cbo_record_fps.currentIndex(), 0) # 30 FPS
+        self.assertTrue(dlg.chk_record_desktop_audio.isChecked())
+        self.assertFalse(dlg.chk_record_mic.isChecked())
+        self.assertTrue(dlg.chk_record_cursor.isChecked())
+        dlg.close()
+
 if __name__ == "__main__":
     unittest.main()
 

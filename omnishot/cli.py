@@ -12,14 +12,15 @@ from PySide6.QtGui import QIcon
 from PySide6.QtCore import QTimer
 
 from .core.config import OmniShotConfig
+from .core.recorder import is_recording_in_progress, request_stop_active_recording
 from .app import OmniShotApp
 
-__version__ = "1.0.8"
+__version__ = "1.0.9"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="omnishot",
-        description="OmniShot - Advanced KDE Plasma 6 Screenshot & Scrolling Capture Utility"
+        description="OmniShot - Advanced KDE Plasma 6 Screenshot & Screen Recording Utility"
     )
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
     
@@ -32,6 +33,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-a", "--activewindow", action="store_true", help="Capture the currently active window")
     parser.add_argument("-l", "--launchonly", action="store_true", help="Launch GUI without taking a screenshot")
     
+    # Screen Recording flags (Spectacle 6 compatible)
+    parser.add_argument(
+        "-R", "--record",
+        nargs="?",
+        const="region",
+        default=None,
+        choices=["region", "screen", "window", "fullscreen", "r", "s", "w"],
+        help="Record screen video (modes: region, screen, window; default: region). If already recording, stops it."
+    )
+    parser.add_argument("--record-region", action="store_true", help="Record a rectangular region of the screen")
+    parser.add_argument("--record-screen", action="store_true", help="Record the entire screen workspace")
+    parser.add_argument("--record-window", action="store_true", help="Record the active window")
+    parser.add_argument("--stop-record", action="store_true", help="Stop any active screen recording in progress")
+    parser.add_argument("--no-audio", action="store_true", help="Disable all audio capture during recording")
+    parser.add_argument("--record-audio", action="store_true", help="Include desktop/system audio in recording")
+    parser.add_argument("--record-mic", action="store_true", help="Include microphone audio in recording")
+    parser.add_argument("--no-cursor", action="store_true", help="Exclude mouse cursor from recording")
+
     # Post-processing flags
     parser.add_argument("-c", "--copy-image", action="store_true", help="Copy screenshot directly to clipboard")
     parser.add_argument("-o", "--output", metavar="FILE", type=str, help="Save screenshot to specified file path")
@@ -43,6 +62,27 @@ def build_parser() -> argparse.ArgumentParser:
 def main():
     parser = build_parser()
     args = parser.parse_args()
+
+    # Fast IPC check: if user triggered a record command or --stop-record while a recording
+    # is actively running, toggle/stop it immediately without launching a new GUI process.
+    is_record_command = (
+        args.record is not None
+        or args.record_region
+        or args.record_screen
+        or args.record_window
+        or args.stop_record
+    )
+
+    if is_record_command and is_recording_in_progress():
+        print("[OmniShot] Active screen recording found. Sending stop signal...")
+        if request_stop_active_recording():
+            print("[OmniShot] Active screen recording stopped successfully.")
+        else:
+            print("[OmniShot] Failed to signal active recording.")
+        sys.exit(0)
+    elif args.stop_record:
+        print("[OmniShot] No active screen recording in progress.")
+        sys.exit(0)
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
@@ -72,6 +112,43 @@ def main():
                     return
             print(f"[OmniShot] Could not load image: {args.edit_existing}")
             controller.launch_interactive()
+        elif is_record_command:
+            # Determine record mode
+            if args.record_screen:
+                rec_mode = "screen"
+            elif args.record_window:
+                rec_mode = "window"
+            elif args.record_region:
+                rec_mode = "region"
+            elif args.record in ("screen", "fullscreen", "s"):
+                rec_mode = "screen"
+            elif args.record in ("window", "w"):
+                rec_mode = "window"
+            else:
+                rec_mode = "region"
+
+            desktop_audio = config.record_include_desktop_audio
+            if args.no_audio:
+                desktop_audio = False
+            elif args.record_audio:
+                desktop_audio = True
+
+            mic = config.record_include_mic
+            if args.no_audio:
+                mic = False
+            elif args.record_mic:
+                mic = True
+
+            cursor = config.record_include_cursor
+            if args.no_cursor:
+                cursor = False
+
+            controller.trigger_record(
+                mode=rec_mode,
+                include_desktop_audio=desktop_audio,
+                include_mic=mic,
+                include_cursor=cursor
+            )
         elif args.editor:
             controller.show_main_window_empty()
         elif args.scroll:

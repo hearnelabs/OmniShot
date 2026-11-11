@@ -36,13 +36,25 @@ class OmniShotConfig:
     default_stroke_width: int = 4
     default_font_size: int = 18
 
+    # Screen Recording settings
+    record_directory: str = str(Path.home() / "Videos" / "Recordings")
+    record_filename_template: str = "OmniShot_%Y%m%d_%H%M%S.mp4"
+    record_format: str = "mp4" # mp4 or webm
+    record_fps: int = 30
+    record_include_desktop_audio: bool = True
+    record_include_mic: bool = False
+    record_include_cursor: bool = True
+
     # Global shortcuts (KDE Plasma 6 Wayland)
     shortcut_launch: str = "Meta+Shift+S"
     shortcut_scrolling: str = "Meta+Shift+C"
-    shortcut_region: str = "Meta+Shift+R"
+    shortcut_region: str = "Meta+Shift+Print"
     shortcut_fullscreen: str = "Print"
     shortcut_window: str = "Meta+Print"
     shortcut_editor: str = "Meta+Shift+E"
+    shortcut_record_region: str = "Meta+Shift+R"
+    shortcut_record_screen: str = "Meta+Alt+R"
+    shortcut_record_window: str = "Meta+Ctrl+R"
 
     @classmethod
     def load(cls) -> "OmniShotConfig":
@@ -86,6 +98,9 @@ class OmniShotConfig:
                     subprocess.run(base_cmd + ["--key", "RectangularRegionScreenShot", f"{self.shortcut_region},none,Capture Rectangular Region"], check=False)
                     subprocess.run(base_cmd + ["--key", "FullScreenScreenShot", f"{self.shortcut_fullscreen},none,Capture Entire Desktop"], check=False)
                     subprocess.run(base_cmd + ["--key", "ActiveWindowScreenShot", f"{self.shortcut_window},none,Capture Active Window"], check=False)
+                    subprocess.run(base_cmd + ["--key", "RecordRegion", f"{self.shortcut_record_region},none,Start/Stop Region Recording"], check=False)
+                    subprocess.run(base_cmd + ["--key", "RecordScreen", f"{self.shortcut_record_screen},none,Start/Stop Screen Recording"], check=False)
+                    subprocess.run(base_cmd + ["--key", "RecordWindow", f"{self.shortcut_record_window},none,Start/Stop Window Recording"], check=False)
             except Exception as e:
                 print(f"[OmniShot] Warning: Could not update kglobalshortcutsrc: {e}")
 
@@ -100,6 +115,9 @@ class OmniShotConfig:
                     "[Desktop Action RectangularRegionScreenShot]": self.shortcut_region,
                     "[Desktop Action FullScreenScreenShot]": self.shortcut_fullscreen,
                     "[Desktop Action ActiveWindowScreenShot]": self.shortcut_window,
+                    "[Desktop Action RecordRegion]": self.shortcut_record_region,
+                    "[Desktop Action RecordScreen]": self.shortcut_record_screen,
+                    "[Desktop Action RecordWindow]": self.shortcut_record_window,
                 }
                 lines = desktop_file.read_text(encoding="utf-8").splitlines()
                 new_lines = []
@@ -143,6 +161,9 @@ class OmniShotConfig:
                 ("RectangularRegionScreenShot", "Capture Rectangular Region", self.shortcut_region),
                 ("FullScreenScreenShot", "Capture Entire Desktop", self.shortcut_fullscreen),
                 ("ActiveWindowScreenShot", "Capture Active Window", self.shortcut_window),
+                ("RecordRegion", "Start/Stop Region Recording", self.shortcut_record_region),
+                ("RecordScreen", "Start/Stop Screen Recording", self.shortcut_record_screen),
+                ("RecordWindow", "Start/Stop Window Recording", self.shortcut_record_window),
             ]
             for action_name, label, seq_str in shortcuts_map:
                 action_id = ["omnishot.desktop", action_name, "OmniShot", label]
